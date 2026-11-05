@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Колчан">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<style>
+:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+html, body { margin: 0; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 10; }
+.hdr-right { display: flex; gap: 12px; align-items: baseline; }
+.ok { color: var(--accent); font-size: 14px; }
+.dataBtns { display: flex; flex-direction: column; gap: 10px; }
+</style>
+<title>Колчан</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=Unbounded:wght@600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column inventory; places and bags on top, items as rows; location shown as label-maker tape */
+:root {
+  --bg: #f3f4f1;
+  --surface: #ffffff;
+  --ink: #1d2320;
+  --muted: #646d68;
+  --line: #dde1dc;
+  --tape: #f5d547;
+  --tape-ink: #2a2610;
+  --bag: #2f5d4e;
+  --bag-soft: #e3eee9;
+  --accent: #2f5d4e;
+  --accent-ink: #ffffff;
+  --danger: #b3412f;
+  --danger-soft: #f8e4df;
+  --overlay: rgba(20,24,22,.45);
+  --font-display: "Unbounded", "Golos Text", system-ui, sans-serif;
+  --font-body: "Golos Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141816; --surface: #1d2220; --ink: #e8ece9; --muted: #9aa49f; --line: #2d3430;
+    --tape: #e3c43c; --tape-ink: #221f0a; --bag: #7fc3a9; --bag-soft: #213029; --accent: #7fc3a9; --accent-ink: #0f1a16;
+    --danger: #e5826f; --danger-soft: #3a2420; --overlay: rgba(0,0,0,.6); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141816; --surface: #1d2220; --ink: #e8ece9; --muted: #9aa49f; --line: #2d3430;
+  --tape: #e3c43c; --tape-ink: #221f0a; --bag: #7fc3a9; --bag-soft: #213029; --accent: #7fc3a9; --accent-ink: #0f1a16;
+  --danger: #e5826f; --danger-soft: #3a2420; --overlay: rgba(0,0,0,.6); color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45; -webkit-text-size-adjust: 100%; touch-action: manipulation; }
+/* iOS zooms into any field with text under 16px: keep every field at 16px */
+input, textarea, select { font-size: 16px !important; }
+.wrap { max-width: 720px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 110px; display: flex; flex-direction: column; gap: 14px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--font-display); font-weight: 600; font-size: 22px; margin: 0; letter-spacing: -.01em; }
+h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0; font-weight: 600; }
+.count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.search { display: flex; gap: 8px; flex-wrap: wrap; }
+.search input, .search select { flex: 1; min-width: 0; }
+input, textarea, select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; width: 100%; box-sizing: border-box; }
+input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 10px 14px; }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+button.link { border: 0; background: none; padding: 4px 2px; color: var(--accent); font-weight: 500; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: 13px; }
+.crumbs button { border: 0; background: none; padding: 4px 6px; color: var(--accent); font-family: inherit; border-radius: 6px; }
+.crumbs button[aria-current="true"] { color: var(--ink); font-weight: 500; cursor: default; }
+.crumbs .sep { color: var(--muted); }
+.group { display: flex; flex-direction: column; gap: 8px; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { font-family: var(--font-mono); font-size: 13px; padding: 7px 10px; border-radius: 8px; display: inline-flex; gap: 6px; align-items: center; }
+.chip span { color: var(--muted); font-variant-numeric: tabular-nums; }
+.chip.bag { background: var(--bag-soft); border-color: transparent; color: var(--ink); }
+.chip.bag small { font-family: var(--font-body); color: var(--muted); font-size: 12px; }
+.chip.miss { color: var(--danger); border-color: var(--danger); background: transparent; }
+.chip.miss span { color: var(--danger); }
+.panel { background: var(--bag-soft); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.panel .where { font-size: 14px; color: var(--muted); }
+.panel .where b { color: var(--ink); font-family: var(--font-mono); font-weight: 500; }
+.panel .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.panel .btns button { background: var(--surface); }
+.notice { font-size: 14px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); }
+.toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.choose { display: flex; flex-direction: column; gap: 10px; }
+.choose button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 14px 16px; border-radius: 12px; }
+.choose b { font-size: 17px; font-weight: 600; }
+.choose span { font-size: 14px; color: var(--muted); }
+.sec { display: flex; align-items: center; gap: 10px; width: 100%; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); text-align: left; font-size: 16px; font-weight: 600; }
+.sec .sec-t { flex: 1; min-width: 0; }
+.sec .sec-n { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.sec .caret { width: 9px; height: 9px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform .15s ease; margin-right: 2px; }
+.sec[aria-expanded="true"] .caret { transform: rotate(45deg); margin-top: -4px; }
+@media (prefers-reduced-motion: reduce) { .sec .caret { transition: none; } }
+.list { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.item { display: grid; grid-template-columns: 48px 1fr; gap: 12px; padding: 12px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; text-align: left; width: 100%; align-items: start; color: var(--ink); }
+.item.pick { grid-template-columns: 24px 48px 1fr; }
+.item.on { background: var(--bag-soft); }
+.item:last-child { border-bottom: 0; }
+.box { width: 22px; height: 22px; border: 2px solid var(--muted); border-radius: 6px; margin-top: 12px; display: grid; place-items: center; font-size: 14px; color: var(--accent-ink); box-sizing: border-box; }
+.item.on .box { background: var(--accent); border-color: var(--accent); }
+.thumb { width: 48px; height: 48px; border-radius: 10px; background: var(--bg); display: grid; place-items: center; font-family: var(--font-display); font-size: 18px; color: var(--muted); overflow: hidden; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; }
+.body { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.name { font-weight: 600; font-size: 16px; overflow-wrap: anywhere; }
+.qty { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.tapes { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.tape { max-width: 100%; background: var(--tape); color: var(--tape-ink); font-family: var(--font-mono); font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 2px; overflow-wrap: anywhere; letter-spacing: .02em; }
+.tape.bagt { background: var(--bag); color: var(--accent-ink); }
+.pill { font-size: 12px; font-weight: 600; color: var(--danger); background: var(--danger-soft); padding: 1px 7px; border-radius: 4px; }
+.note { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+.empty strong { display: block; color: var(--ink); font-size: 16px; margin-bottom: 4px; }
+.fab { position: fixed; right: max(16px, calc(env(safe-area-inset-right, 0px) + 16px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); padding: 14px 20px; border-radius: 14px; box-shadow: 0 6px 20px rgba(0,0,0,.18); z-index: 5; }
+.bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--surface); border-top: 1px solid var(--line); padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 12px) max(16px, env(safe-area-inset-left, 0px)); }
+.bar-in { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.bar-in .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.bar-in .row > select { flex: 1; min-width: 0; }
+.bar-in .hint { font-size: 13px; color: var(--muted); }
+.sheet-bg { position: fixed; inset: 0; background: var(--overlay); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: var(--bg); width: 100%; max-width: 560px; max-height: 92%; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 18px) max(16px, env(safe-area-inset-left, 0px)); box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; }
+@media (min-width: 640px) { .sheet-bg { align-items: center; } .sheet { border-radius: 18px; } }
+.sheet h2 { font-family: var(--font-display); font-weight: 600; font-size: 18px; margin: 0; }
+label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.row2 { display: flex; gap: 10px; flex-wrap: wrap; }
+.row2 > * { flex: 1; min-width: 0; }
+.photo-box { display: flex; gap: 12px; align-items: center; }
+.photo-box img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; }
+.actions { display: flex; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
+.actions .right { display: flex; gap: 10px; margin-left: auto; }
+.confirm { background: var(--surface); border: 1px solid var(--danger); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.err { color: var(--danger); font-size: 14px; }
+.sugg { display: flex; flex-wrap: wrap; gap: 6px; }
+.sugg button { font-family: var(--font-mono); font-size: 12px; padding: 5px 8px; border-radius: 6px; }
+.hist { display: flex; flex-direction: column; gap: 0; border-left: 2px solid var(--line); margin-left: 4px; }
+.hist div { padding: 4px 0 8px 12px; font-size: 14px; position: relative; }
+.hist div::before { content: ""; position: absolute; left: -6px; top: 10px; width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.hist div.bagmove::before { background: var(--bag); }
+.hist div.miss::before { background: var(--danger); }
+.hist div.ok::before { background: var(--accent); }
+.hist time { display: block; font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: no-preference) { .sheet { animation: up .18s ease-out; } @keyframes up { from { transform: translateY(16px); opacity: .6; } } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Колчан</h1>
+    <div class="hdr-right"><div class="count" id="count">Загружаю базу…</div><button type="button" class="link" id="data-open">Данные</button></div>
+  </header>
+  <div class="search">
+    <input id="q" type="search" placeholder="Найти вещь, место или сумку" autocomplete="off">
+  </div>
+  <nav class="crumbs" id="crumbs" aria-label="Место"></nav>
+
+  <div class="group" id="bags-group" hidden>
+    <button type="button" class="sec" id="sec-bags" aria-expanded="false"><span class="sec-t">Сумки</span><span class="sec-n" id="sec-bags-n"></span><span class="caret" aria-hidden="true"></span></button>
+    <div class="chips" id="bags"></div>
+    <form class="search" id="nb" hidden>
+      <input id="nb-name" placeholder="Название сумки" autocomplete="off">
+      <button type="submit" class="primary">Добавить</button>
+      <button type="button" id="nb-cancel">Отмена</button>
+    </form>
+  </div>
+
+  <div class="group" id="places-group">
+    <button type="button" class="sec" id="sec-places" aria-expanded="false"><span class="sec-t" id="places-h">Места</span><span class="sec-n" id="sec-places-n"></span><span class="caret" aria-hidden="true"></span></button>
+    <div class="chips" id="chips"></div>
+    <form class="search" id="np" hidden>
+      <input id="np-name" placeholder="Новое место, например «Гараж»" autocomplete="off">
+      <button type="submit" class="primary">Добавить</button>
+      <button type="button" id="np-cancel">Отмена</button>
+    </form>
+  </div>
+
+  <div class="panel" id="bag-panel" hidden>
+    <div class="where" id="bag-where"></div>
+    <div class="btns" id="bag-btns">
+      <button type="button" id="bag-move">Перевезти сумку</button>
+      <button type="button" id="bag-check">Сверить содержимое</button>
+      <button type="button" id="bag-unpack">Выложить всё</button>
+    </div>
+    <div class="search" id="bag-move-form" hidden>
+      <input id="bag-move-note" placeholder="Заметка к перевозке, например «СДЭК до Сочи»" autocomplete="off" style="flex-basis:100%">
+      <select id="bag-move-to" style="flex-basis:100%"></select>
+      <input id="bag-move-new" hidden placeholder="Новое место хранения, например «Гараж»" autocomplete="off" style="flex-basis:100%">
+      <button type="button" class="primary" id="bag-move-ok">Перевезти</button>
+      <button type="button" id="bag-move-cancel">Отмена</button>
+    </div>
+    <div id="bag-unpack-form" hidden class="search">
+      <span class="where" id="bag-unpack-text"></span>
+      <button type="button" class="primary" id="bag-unpack-ok">Выложить</button>
+      <button type="button" id="bag-unpack-cancel">Отмена</button>
+    </div>
+  </div>
+
+  <div id="status" hidden class="notice"></div>
+  <div class="group" id="items-group">
+  <button type="button" class="sec" id="sec-items" aria-expanded="false"><span class="sec-t" id="list-h">Вещи</span><span class="sec-n" id="sec-items-n"></span><span class="caret" aria-hidden="true"></span></button>
+  <div class="toolbar" id="toolbar">
+    <span></span>
+    <button type="button" class="link" id="pick-start">Выбрать несколько</button>
+  </div>
+  <div class="list" id="list">
+    <div class="empty"><strong>Загружаю…</strong></div>
+  </div>
+  </div>
+</div>
+<button class="primary fab" id="add" hidden>+ Добавить</button>
+
+<div class="bar" id="bar" hidden>
+  <div class="bar-in">
+    <div class="hint" id="bar-hint"></div>
+    <div class="row" id="bar-note-row">
+      <input id="bar-note" placeholder="Заметка к перемещению, например «для обработки DWR»" autocomplete="off">
+    </div>
+    <div class="row" id="bar-move">
+      <select id="bar-to" aria-label="Куда переложить"></select>
+    </div>
+    <div class="row" id="bar-new-row" hidden>
+      <input id="bar-new" placeholder="Новое место хранения, например «Гараж»" autocomplete="off">
+    </div>
+    <div class="row" id="bar-btns">
+      <button type="button" class="primary" id="bar-go">Переложить</button>
+      <button type="button" id="bar-cancel">Отмена</button>
+    </div>
+    <div class="row" id="bar-check" hidden>
+      <button type="button" class="primary" id="check-go">Готово</button>
+      <button type="button" id="check-cancel">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-bg" id="add-bg" hidden>
+  <div class="sheet" id="add-choose">
+    <h2>Что добавить?</h2>
+    <div class="choose">
+      <button type="button" id="add-item"><b>Вещь</b><span>Куртку, маску, рацию…</span></button>
+      <button type="button" id="add-bag"><b>Сумку</b><span>Рюкзак или чехол, в который кладёшь вещи</span></button>
+      <button type="button" id="add-place"><b>Место хранения</b><span>Дача, гараж, у друга…</span></button>
+    </div>
+    <div class="actions"><div class="right"><button type="button" class="add-cancel">Отмена</button></div></div>
+  </div>
+  <form class="sheet" id="add-place-form" hidden novalidate>
+    <h2>Новое место хранения</h2>
+    <label>Название
+      <input id="ap-name" placeholder="Например, Гараж" autocomplete="off">
+    </label>
+    <div class="err" id="ap-err" hidden></div>
+    <div class="actions"><div class="right"><button type="button" class="add-cancel">Отмена</button><button type="submit" class="primary">Добавить</button></div></div>
+  </form>
+  <form class="sheet" id="add-bag-form" hidden novalidate>
+    <h2>Новая сумка</h2>
+    <label>Название
+      <input id="ab-name" placeholder="Например, Чехол Nitro 157" autocomplete="off">
+    </label>
+    <label>Где хранится
+      <select id="ab-where"></select>
+    </label>
+    <label id="ab-new-wrap" hidden>Новое место хранения <span class="hint">можно с уровнями: Дача / Сарай</span>
+      <input id="ab-new" placeholder="Например, Гараж" autocomplete="off">
+    </label>
+    <div class="err" id="ab-err" hidden></div>
+    <div class="actions"><div class="right"><button type="button" class="add-cancel">Отмена</button><button type="submit" class="primary">Добавить</button></div></div>
+  </form>
+</div>
+
+<div class="sheet-bg" id="sheet-bg" hidden>
+  <form class="sheet" id="form" novalidate>
+    <h2 id="f-title">Новая вещь</h2>
+    <label>Что
+      <input id="f-name" required placeholder="Например, маска" autocomplete="off">
+    </label>
+    <label>Где лежит
+      <select id="f-where"></select>
+    </label>
+    <label id="f-new-wrap" hidden>Новое место хранения <span class="hint">можно с уровнями: Дача / Сарай / стеллаж</span>
+      <input id="f-new" placeholder="Например, Гараж" autocomplete="off">
+    </label>
+    <label>Заметка к перемещению <span class="hint">запишется в историю, если сменишь место или сумку</span>
+      <input id="f-mnote" placeholder="Например, для обработки DWR" autocomplete="off">
+    </label>
+    <div class="row2">
+      <label>Сколько
+        <input id="f-qty" inputmode="numeric" placeholder="1">
+      </label>
+    </div>
+    <label>Заметка
+      <textarea id="f-note" rows="2" placeholder="Например, в боковом кармане"></textarea>
+    </label>
+    <div id="f-photo-wrap" hidden class="group">
+      <label>Фото</label>
+      <div class="photo-box">
+        <img id="f-photo-img" alt="" hidden>
+        <input id="f-photo" type="file" accept="image/*">
+      </div>
+      <button type="button" class="link" id="f-photo-clear" hidden>Убрать фото</button>
+    </div>
+    <div id="f-hist-wrap" class="group" hidden>
+      <h3>История</h3>
+      <div class="hist" id="f-hist"></div>
+    </div>
+    <div class="err" id="f-err" hidden></div>
+    <div class="confirm" id="f-confirm" hidden>
+      <span>Удалить эту вещь из базы? Это нельзя отменить.</span>
+      <div class="row2"><button type="button" id="f-confirm-no">Оставить</button><button type="button" class="danger" id="f-confirm-yes">Удалить</button></div>
+    </div>
+    <div class="actions">
+      <button type="button" class="danger" id="f-del" hidden>Удалить</button>
+      <div class="right">
+        <button type="button" id="f-cancel">Отмена</button>
+        <button type="submit" class="primary" id="f-save">Сохранить</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="sheet-bg" id="data-bg" hidden>
+  <div class="sheet">
+    <h2>Данные</h2>
+    <div class="note" id="d-stat"></div>
+    <div class="note" id="d-last"></div>
+    <div class="dataBtns">
+      <button type="button" class="primary" id="d-export">Выгрузить файл</button>
+      <label>Загрузить файл <span class="hint">заменит всю базу на этом телефоне</span>
+        <input type="file" id="d-import" accept=".json,application/json">
+      </label>
+    </div>
+    <div class="confirm" id="d-confirm" hidden>
+      <span id="d-confirm-text"></span>
+      <div class="row2"><button type="button" id="d-confirm-no">Отмена</button><button type="button" class="danger" id="d-confirm-yes">Заменить базу</button></div>
+    </div>
+    <div class="ok" id="d-msg" hidden></div>
+    <div class="notice">База хранится только на этом телефоне. Выгружай файл время от времени: это резервная копия и способ передать базу в чат Claude. Файл, который вернёт Claude, загружается здесь же.</div>
+    <div class="actions"><div class="right"><button type="button" id="d-close">Закрыть</button></div></div>
+  </div>
+</div>
+<script src="local.js"></script>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  let db = null, assets = null;
+  let places = [], bags = [], items = [], cur = [], loaded = false;
+  let mode = null, sel = new Set(), showMissing = false;
+  const photoSrc = (id) => (window.__photoSrc ? window.__photoSrc(id) : "/_blob/" + id);
+  // Collapsible sections: closed by default on the start screen, open when searching or inside a place
+  let over = {}, lastOpen = {};
+  ["bags", "places", "items"].forEach(k => { const b = document.getElementById("sec-" + k); if (b) b.onclick = () => { over[k] = !lastOpen[k]; render(); }; });
+  let editing = null, photoState = null;
+
+  const norm = (s) => (s || "").split("/").map(x => x.trim()).filter(Boolean);
+  const pathStr = (parts) => parts.join(" / ");
+  const low = (s) => (s || "").toLowerCase();
+  const fmt = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const LOG_MAX = 80;
+  const addLog = (log, e) => (Array.isArray(log) ? log : []).concat(e).slice(-LOG_MAX);
+
+  function setStatus(msg) { const s = $("status"); s.textContent = msg || ""; s.hidden = !msg; }
+  function plural(n, f) { const a = n % 10, b = n % 100; return f[(a === 1 && b !== 11) ? 0 : (a >= 2 && a <= 4 && (b < 12 || b > 14)) ? 1 : 2]; }
+  const bagMap = () => Object.fromEntries(bags.map(b => [b.id, b]));
+
+  // Where an item effectively is: loose place, or inside a bag (then bag's location + bag name)
+  function eff(it, bm) {
+    const b = it.in && bm[it.in];
+    if (b) { const lp = norm(b.location); return { parts: lp.concat(b.name), bag: b }; }
+    return { parts: it.parts, bag: null };
+  }
+  function bagAt(parts) {
+    if (!parts.length) return null;
+    const name = parts[parts.length - 1], loc = pathStr(parts.slice(0, -1));
+    return bags.find(b => b.name === name && pathStr(norm(b.location)) === loc) || null;
+  }
+  // Every loose place path (for suggestions and destinations)
+  function allPlaces() {
+    const s = new Set(places.map(p => p.name));
+    items.forEach(it => { if (!it.in) for (let i = 1; i <= it.parts.length; i++) s.add(pathStr(it.parts.slice(0, i))); });
+    const order = (p) => { const i = places.findIndex(x => x.name === norm(p)[0]); return i < 0 ? 1e6 : i; };
+    return [...s].sort((a, b) => (order(a) - order(b)) || a.localeCompare(b, "ru"));
+  }
+  // Dropdown of storage places (and bags), with "add storage place" as the last option
+  const NEW = "__new";
+  function fillWhere(selEl, newEl, opts) {
+    const o = opts || {};
+    selEl.textContent = "";
+    if (o.blank) { const op = document.createElement("option"); op.value = ""; op.textContent = "место не указано"; selEl.appendChild(op); }
+    if (o.bags) {
+      const g1 = document.createElement("optgroup"); g1.label = "Сумки";
+      bags.filter(b => b.id !== o.excludeBagId).forEach(b => { const op = document.createElement("option"); op.value = "bag:" + b.id; op.textContent = b.name + " (" + (b.location || "?") + ")"; g1.appendChild(op); });
+      if (g1.children.length) selEl.appendChild(g1);
+    }
+    const g2 = document.createElement("optgroup"); g2.label = "Места хранения";
+    const ps = allPlaces(); if (o.value && o.value.startsWith("place:") && !ps.includes(o.value.slice(6)) && o.value.slice(6)) ps.push(o.value.slice(6));
+    ps.forEach(p => { const op = document.createElement("option"); op.value = "place:" + p; op.textContent = p; g2.appendChild(op); });
+    selEl.appendChild(g2);
+    const add = document.createElement("option"); add.value = NEW; add.textContent = "+ Добавить место хранения…"; selEl.appendChild(add);
+    if (o.value !== undefined) selEl.value = o.value;
+    newEl.value = ""; newEl.hidden = true; if (newEl.parentElement && newEl.parentElement.id.endsWith("-row")) newEl.parentElement.hidden = true;
+    selEl.onchange = () => {
+      const isNew = selEl.value === NEW;
+      newEl.hidden = !isNew;
+      if (newEl.parentElement && newEl.parentElement.id.endsWith("-row")) newEl.parentElement.hidden = !isNew;
+      if (newEl.closest("label") && newEl.closest("label").id) newEl.closest("label").hidden = !isNew;
+      if (isNew) newEl.focus();
+    };
+  }
+  // Returns {in: bagId} | {place: path} | null when "new" was chosen but left empty
+  function readWhere(selEl, newEl) {
+    const v = selEl.value;
+    if (v === NEW) { const p = pathStr(norm(newEl.value)); return p ? { place: p, isNew: true } : null; }
+    if (v.startsWith("bag:")) return { in: v.slice(4) };
+    if (v.startsWith("place:")) return { place: v.slice(6) };
+    return { place: "" };
+  }
+  async function ensurePlace(path) {
+    const top = norm(path)[0];
+    if (!top || places.some(p => low(p.name) === low(top))) return;
+    const order = places.reduce((m, p) => Math.max(m, p.order || 0), 0) + 10;
+    await db.collection("places").doc().set({ name: top, order });
+  }
+
+  // ---------- render ----------
+  function render() {
+    const q = low($("q").value.trim());
+    const bm = bagMap();
+    const all = items.map(it => ({ it, e: eff(it, bm) }));
+    const viewBag = bagAt(cur);
+
+    // crumbs
+    const cr = $("crumbs"); cr.textContent = "";
+    const mk = (label, depth) => {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = label;
+      if (depth === cur.length && !showMissing) b.setAttribute("aria-current", "true");
+      b.onclick = () => { cur = cur.slice(0, depth); showMissing = false; over = {}; endMode(); render(); };
+      return b;
+    };
+    cr.appendChild(mk("Всё", 0));
+    cur.forEach((p, i) => { const s = document.createElement("span"); s.className = "sep"; s.textContent = "/"; cr.appendChild(s); cr.appendChild(mk(p, i + 1)); });
+    if (showMissing) { const s = document.createElement("span"); s.className = "sep"; s.textContent = "/"; cr.append(s, "не нашлись"); }
+    cr.hidden = !cur.length && !showMissing;
+
+    // search matches (used to filter places and bags while typing)
+    const hit = (x) => low(x.it.name).includes(q) || low(x.it.note).includes(q) || low(pathStr(x.e.parts)).includes(q);
+    const matches = q ? all.filter(hit) : all;
+
+    // bags (root only)
+    const atRoot = !cur.length && !showMissing;
+    let bagsShown = 0;
+    if (atRoot) {
+      const bx = $("bags"); bx.textContent = "";
+      bags.forEach(b => {
+        const n = matches.filter(x => x.it.in === b.id).length;
+        if (q && !n && !low(b.name).includes(q)) return;
+        bagsShown++;
+        const btn = document.createElement("button"); btn.type = "button"; btn.className = "chip bag";
+        btn.append(b.name + " ");
+        const c = document.createElement("span"); c.textContent = n; btn.appendChild(c);
+        const w = document.createElement("small"); w.textContent = "· " + (b.location || "место не указано"); btn.appendChild(w);
+        btn.onclick = () => { cur = norm(b.location).concat(b.name); over = {}; endMode(); render(); };
+        bx.appendChild(btn);
+      });
+      if (!q) {
+        const add = document.createElement("button"); add.type = "button"; add.className = "chip link"; add.textContent = "+ сумка";
+        add.onclick = () => openAddBag();
+        bx.appendChild(add);
+      }
+    }
+    $("bags-group").hidden = !atRoot || !db || (q && !bagsShown);
+
+    // place chips (children of current level); while searching, only where matches are
+    const inPlace = matches.filter(x => cur.every((p, i) => x.e.parts[i] === p));
+    const counts = new Map();
+    if (!cur.length) places.forEach(p => { if (!q || low(p.name).includes(q)) counts.set(p.name, 0); });
+    inPlace.forEach(x => { const n = x.e.parts[cur.length]; if (n) counts.set(n, (counts.get(n) || 0) + 1); });
+    bags.forEach(b => { if (pathStr(norm(b.location)) === pathStr(cur) && !counts.has(b.name) && (!q || low(b.name).includes(q))) counts.set(b.name, 0); });
+    const ch = $("chips"); ch.textContent = "";
+    const rank = (n) => { const i = places.findIndex(p => p.name === n); return cur.length || i < 0 ? 1e9 : i; };
+    [...counts.entries()].sort((a, b) => (rank(a[0]) - rank(b[0])) || a[0].localeCompare(b[0], "ru")).forEach(([name, n]) => {
+      const isBag = !!bagAt(cur.concat(name));
+      const b = document.createElement("button"); b.type = "button"; b.className = "chip" + (isBag ? " bag" : "");
+      b.append(name + " "); const c = document.createElement("span"); c.textContent = n; b.appendChild(c);
+      b.onclick = () => { cur = cur.concat(name); over = {}; endMode(); render(); };
+      ch.appendChild(b);
+    });
+    const missingN = items.filter(it => it.missing).length;
+    if (atRoot && missingN && !q) {
+      const m = document.createElement("button"); m.type = "button"; m.className = "chip miss";
+      m.append("Не нашлись "); const c = document.createElement("span"); c.textContent = missingN; m.appendChild(c);
+      m.onclick = () => { showMissing = true; over = {}; endMode(); render(); };
+      ch.appendChild(m);
+    }
+    if (atRoot && db && !q) {
+      const add = document.createElement("button"); add.type = "button"; add.className = "chip link"; add.textContent = "+ место";
+      add.onclick = () => openAddPlace();
+      ch.appendChild(add);
+    }
+    $("places-h").textContent = cur.length ? "Внутри" : "Места хранения";
+    $("places-group").hidden = !ch.children.length;
+
+    // open / closed sections
+    const auto = { bags: !!q, places: !!q || cur.length > 0, items: !!q || cur.length > 0 || showMissing };
+    const isOpen = (k) => (k === "items" && !!mode) || (k in over ? over[k] : auto[k]);
+    ["bags", "places", "items"].forEach(k => { lastOpen[k] = isOpen(k); $("sec-" + k).setAttribute("aria-expanded", String(lastOpen[k])); });
+    $("bags").hidden = !lastOpen.bags; if (!lastOpen.bags) $("nb").hidden = true;
+    $("sec-bags-n").textContent = bagsShown || "";
+    $("chips").hidden = !lastOpen.places; if (!lastOpen.places) $("np").hidden = true;
+    $("sec-places-n").textContent = counts.size || "";
+
+    // bag panel
+    $("bag-panel").hidden = !viewBag || showMissing;
+    if (viewBag) {
+      const w = $("bag-where"); w.textContent = "«" + viewBag.name + "» сейчас: ";
+      const bb = document.createElement("b"); bb.textContent = viewBag.location || "место не указано"; w.appendChild(bb);
+    }
+
+    // list
+    let shown;
+    if (showMissing) shown = all.filter(x => x.it.missing && (!q || hit(x)));
+    else shown = inPlace;
+    shown.sort((a, b) => (b.it.updatedAt || 0) - (a.it.updatedAt || 0));
+
+    $("count").textContent = loaded ? (items.length + " " + plural(items.length, ["вещь", "вещи", "вещей"])) : "Загружаю базу…";
+    $("list-h").textContent = showMissing ? "Не нашлись" : viewBag ? "В сумке" : cur.length ? "Вещи здесь" : "Все вещи";
+    $("sec-items-n").textContent = loaded ? shown.length : "";
+    $("list").hidden = !lastOpen.items; $("toolbar").hidden = !lastOpen.items;
+    $("pick-start").hidden = !db || !shown.length || !!mode;
+    $("add").hidden = !db || !!mode;
+
+    const list = $("list"); list.textContent = "";
+    if (!shown.length) {
+      const e = document.createElement("div"); e.className = "empty";
+      const st = document.createElement("strong");
+      if (!loaded) { st.textContent = "Загружаю…"; e.append(st); }
+      else if (q) { st.textContent = "Ничего не нашлось"; e.append(st, "Попробуй другое слово."); }
+      else if (viewBag) { st.textContent = "Сумка пустая"; e.append(st, "Нажми «Добавить» или открой место и переложи вещи сюда через «Выбрать несколько»."); }
+      else if (cur.length) { st.textContent = "Здесь пока пусто"; e.append(st, "Нажми «Добавить», и это место подставится само."); }
+      else { st.textContent = "Здесь появятся твои вещи"; e.append(st, "Выбери место сверху и нажми «Добавить»."); }
+      list.appendChild(e); return;
+    }
+    shown.forEach(({ it, e }) => {
+      const row = document.createElement("button"); row.type = "button";
+      row.className = "item" + (mode ? " pick" : "") + (mode && sel.has(it.id) ? " on" : "");
+      if (mode) { const bx = document.createElement("div"); bx.className = "box"; bx.textContent = sel.has(it.id) ? "✓" : ""; row.appendChild(bx); }
+      const th = document.createElement("div"); th.className = "thumb";
+      const initial = () => { th.textContent = (it.name || "?")[0].toUpperCase(); };
+      if (it.photo) { const im = document.createElement("img"); im.src = photoSrc(it.photo); im.alt = ""; im.loading = "lazy"; im.onerror = () => { im.remove(); initial(); }; th.appendChild(im); } else initial();
+      const body = document.createElement("div"); body.className = "body";
+      const nm = document.createElement("div"); nm.className = "name"; nm.textContent = it.name;
+      if (it.qty && it.qty !== "1") { const qn = document.createElement("span"); qn.className = "qty"; qn.textContent = " × " + it.qty; nm.appendChild(qn); }
+      body.appendChild(nm);
+      const tp = document.createElement("div"); tp.className = "tapes";
+      if (e.bag) {
+        const t1 = document.createElement("span"); t1.className = "tape bagt"; t1.textContent = e.bag.name; tp.appendChild(t1);
+        const t2 = document.createElement("span"); t2.className = "tape"; t2.textContent = e.bag.location || "?"; tp.appendChild(t2);
+      } else { const t = document.createElement("span"); t.className = "tape"; t.textContent = it.place || "место не указано"; tp.appendChild(t); }
+      if (it.missing) { const p = document.createElement("span"); p.className = "pill"; p.textContent = "не нашёл при сверке"; tp.appendChild(p); }
+      body.appendChild(tp);
+      if (it.note) { const n = document.createElement("div"); n.className = "note"; n.textContent = it.note; body.appendChild(n); }
+      const lastMove = (it.log || []).filter(x => x.kind === "move").slice(-1)[0];
+      if (lastMove && lastMove.note) { const n = document.createElement("div"); n.className = "note"; n.textContent = "↳ " + lastMove.note; body.appendChild(n); }
+      row.append(th, body);
+      row.onclick = () => {
+        if (mode) { sel.has(it.id) ? sel.delete(it.id) : sel.add(it.id); updateBar(); render(); }
+        else openSheet(it);
+      };
+      list.appendChild(row);
+    });
+  }
+
+  // ---------- writes ----------
+  function base(it) { return { name: it.name, place: it.place, parts: it.parts, in: it.in || null, qty: it.qty, note: it.note, photo: it.photo || null, missing: !!it.missing, updatedAt: it.updatedAt || Date.now(), log: it.log || [] }; }
+  function labelFor(dest, bm) {
+    if (dest.in) { const b = bm[dest.in]; return "в «" + (b ? b.name : "?") + "»" + (b && b.location ? " (" + b.location + ")" : ""); }
+    return dest.place || "место не указано";
+  }
+  async function moveItem(it, dest, note) {
+    const bm = bagMap();
+    if (dest.in ? it.in === dest.in : (!it.in && it.place === dest.place)) return;
+    const d = base(it);
+    d.in = dest.in || null;
+    if (!dest.in) { d.parts = norm(dest.place); d.place = pathStr(d.parts); }
+    d.missing = false; d.updatedAt = Date.now();
+    const e = { t: d.updatedAt, kind: "move", to: labelFor(dest, bm), in: d.in };
+    if (note) e.note = note;
+    d.log = addLog(it.log, e);
+    await db.collection("items").doc(it.id).set(d);
+  }
+  function parseDest(v) { return v.startsWith("bag:") ? { in: v.slice(4) } : { place: v.slice(6) }; }
+
+  // ---------- pick / check modes ----------
+  function endMode() { mode = null; sel.clear(); $("bar").hidden = true; }
+  function updateBar() {
+    $("bar-hint").textContent = mode === "check"
+      ? "Отметь, что на месте: " + sel.size + " из " + items.filter(it => it.in === (bagAt(cur) || {}).id).length + ". Неотмеченные получат пометку «не нашёл»."
+      : (sel.size ? "Выбрано: " + sel.size + ". Куда переложить?" : "Отметь вещи, которые перекладываешь.");
+    $("bar-go").disabled = !sel.size;
+  }
+  $("pick-start").onclick = () => {
+    mode = "pick"; sel.clear();
+    fillWhere($("bar-to"), $("bar-new"), { bags: true, excludeBagId: (bagAt(cur) || {}).id });
+    $("bar-move").hidden = false; $("bar-btns").hidden = false; $("bar-note-row").hidden = false; $("bar-check").hidden = true; $("bar").hidden = false;
+    updateBar(); render();
+  };
+  $("bar-cancel").onclick = () => { endMode(); render(); };
+  $("bar-go").onclick = async () => {
+    const dest = readWhere($("bar-to"), $("bar-new"));
+    if (!dest) { $("bar-new").focus(); return; }
+    const ids = [...sel]; const btn = $("bar-go"); btn.disabled = true; btn.textContent = "Перекладываю…";
+    if (dest.isNew) { try { await ensurePlace(dest.place); } catch (e) {} }
+    let fail = 0; const note = $("bar-note").value.trim();
+    for (const id of ids) { const it = items.find(x => x.id === id); if (!it) continue; try { await moveItem(it, dest, note); } catch (e) { fail++; } }
+    btn.textContent = "Переложить"; $("bar-note").value = ""; endMode();
+    setStatus(fail ? "Не получилось переложить " + fail + " " + plural(fail, ["вещь", "вещи", "вещей"]) + ". Попробуй ещё раз." : "");
+    render();
+  };
+  $("bag-check").onclick = () => {
+    const b = bagAt(cur); if (!b) return;
+    mode = "check"; sel.clear();
+    $("bar-move").hidden = true; $("bar-new-row").hidden = true; $("bar-btns").hidden = true; $("bar-note-row").hidden = true; $("bar-check").hidden = false; $("bar").hidden = false;
+    updateBar(); render();
+  };
+  $("check-cancel").onclick = () => { endMode(); render(); };
+  $("check-go").onclick = async () => {
+    const b = bagAt(cur); if (!b) return;
+    const btn = $("check-go"); btn.disabled = true; btn.textContent = "Сохраняю…";
+    const t = Date.now(); let miss = 0;
+    for (const it of items.filter(x => x.in === b.id)) {
+      const ok = sel.has(it.id); if (!ok) miss++;
+      const d = base(it); d.missing = !ok; d.updatedAt = ok ? it.updatedAt || t : t;
+      d.log = addLog(it.log, { t, kind: ok ? "check-ok" : "check-miss", to: "«" + b.name + "» (" + (b.location || "?") + ")" });
+      try { await db.collection("items").doc(it.id).set(d); } catch (e) {}
+    }
+    btn.disabled = false; btn.textContent = "Готово"; endMode();
+    setStatus(miss ? "Сверка сохранена. Не нашлось: " + miss + ". Их история покажет, где они были в последний раз." : "Сверка сохранена, всё на месте.");
+    render();
+  };
+
+  // ---------- bag panel ----------
+  $("bag-move").onclick = () => {
+    const b = bagAt(cur); if (!b) return;
+    fillWhere($("bag-move-to"), $("bag-move-new"), { value: "place:" + (b.location || "") });
+    $("bag-move-form").hidden = false; $("bag-unpack-form").hidden = true;
+  };
+  $("bag-move-cancel").onclick = () => { $("bag-move-form").hidden = true; };
+  $("bag-move-ok").onclick = async () => {
+    const b = bagAt(cur); if (!b) return;
+    const dest = readWhere($("bag-move-to"), $("bag-move-new"));
+    if (!dest) { $("bag-move-new").focus(); return; }
+    const to = dest.place; if (!to || to === b.location) { $("bag-move-form").hidden = true; return; }
+    const t = Date.now();
+    try {
+      if (dest.isNew) await ensurePlace(to);
+      const e = { t, from: b.location || "", to }; const note = $("bag-move-note").value.trim(); if (note) e.note = note;
+      await db.collection("bags").doc(b.id).set({ name: b.name, location: to, order: b.order || 0, log: addLog(b.log, e) });
+      cur = norm(to).concat(b.name); $("bag-move-form").hidden = true; $("bag-move-note").value = ""; render();
+    } catch (e) { setStatus("Не получилось перевезти сумку. Попробуй ещё раз."); }
+  };
+  $("bag-unpack").onclick = () => {
+    const b = bagAt(cur); if (!b) return;
+    $("bag-unpack-text").textContent = "Все вещи из «" + b.name + "» окажутся просто в месте «" + (b.location || "?") + "».";
+    $("bag-unpack-form").hidden = false; $("bag-move-form").hidden = true;
+  };
+  $("bag-unpack-cancel").onclick = () => { $("bag-unpack-form").hidden = true; };
+  $("bag-unpack-ok").onclick = async () => {
+    const b = bagAt(cur); if (!b) return;
+    for (const it of items.filter(x => x.in === b.id)) { try { await moveItem(it, { place: b.location || "" }); } catch (e) {} }
+    $("bag-unpack-form").hidden = true; render();
+  };
+
+  // ---------- new bag / place ----------
+  $("nb-cancel").onclick = () => { $("nb").hidden = true; $("nb-name").value = ""; };
+  $("nb").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("nb-name").value.replace(/\//g, " ").trim();
+    if (!name || bags.some(b => low(b.name) === low(name))) { $("nb").hidden = true; $("nb-name").value = ""; return; }
+    const order = bags.reduce((m, b) => Math.max(m, b.order || 0), 0) + 10;
+    try { await db.collection("bags").doc().set({ name, location: places[0] ? places[0].name : "", order, log: [] }); $("nb-name").value = ""; $("nb").hidden = true; }
+    catch (ex) { setStatus("Не получилось добавить сумку. Попробуй ещё раз."); }
+  });
+  $("np-cancel").onclick = () => { $("np").hidden = true; $("np-name").value = ""; };
+  $("np").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("np-name").value.replace(/\//g, " ").trim();
+    if (!name || places.some(p => low(p.name) === low(name))) { $("np").hidden = true; $("np-name").value = ""; return; }
+    const order = places.reduce((m, p) => Math.max(m, p.order || 0), 0) + 10;
+    try { await db.collection("places").doc().set({ name, order }); $("np-name").value = ""; $("np").hidden = true; }
+    catch (ex) { setStatus("Не получилось добавить место. Попробуй ещё раз."); }
+  });
+
+  // ---------- item sheet ----------
+  function history(it) {
+    const bm = bagMap(), out = [];
+    const log = (it.log || []).slice().sort((a, b) => a.t - b.t);
+    log.forEach((e, i) => {
+      if (e.kind === "check-ok") out.push({ t: e.t, cls: "ok", text: "На месте при сверке: " + e.to });
+      else if (e.kind === "check-miss") out.push({ t: e.t, cls: "miss", text: "Не нашёл при сверке: " + e.to });
+      else if (e.kind === "note") out.push({ t: e.t, cls: "", text: e.note ? "Заметка: " + e.note : "Заметка снята" });
+      else out.push({ t: e.t, cls: "", text: "Положил " + e.to + (e.note ? " — " + e.note : "") });
+      if (e.kind === "move" && e.in && bm[e.in]) {
+        const end = (log.slice(i + 1).find(x => x.kind === "move") || {}).t || Infinity;
+        (bm[e.in].log || []).forEach(m => { if (m.t > e.t && m.t < end) out.push({ t: m.t, cls: "bagmove", text: "«" + bm[e.in].name + "» переехал: " + (m.from || "?") + " → " + m.to + (m.note ? " — " + m.note : "") }); });
+      }
+    });
+    return out.sort((a, b) => b.t - a.t);
+  }
+  function openSheet(it) {
+    editing = it || null;
+    $("f-title").textContent = it ? "Вещь" : "Новая вещь";
+    $("f-name").value = it ? it.name : "";
+    const vb = bagAt(cur);
+    const cv = it ? (it.in ? "bag:" + it.in : (it.place ? "place:" + it.place : "")) : (vb ? "bag:" + vb.id : (cur.length ? "place:" + pathStr(cur) : ""));
+    fillWhere($("f-where"), $("f-new"), { bags: true, blank: true, value: cv });
+    $("f-new-wrap").hidden = true;
+    $("f-mnote").value = "";
+    $("f-qty").value = it ? (it.qty || "") : "";
+    $("f-note").value = it ? (it.note || "") : "";
+    $("f-del").hidden = !it; $("f-confirm").hidden = true; $("f-err").hidden = true;
+    photoState = { id: it && it.photo || null, file: null, cleared: false };
+    showPhoto();
+    $("f-photo-wrap").hidden = !assets;
+    const h = it ? history(it) : [];
+    $("f-hist-wrap").hidden = !h.length;
+    const hx = $("f-hist"); hx.textContent = "";
+    h.slice(0, 40).forEach(x => { const d = document.createElement("div"); d.className = x.cls; const tm = document.createElement("time"); tm.textContent = fmt.format(new Date(x.t)); d.append(tm, x.text); hx.appendChild(d); });
+    $("sheet-bg").hidden = false;
+    if (!it) setTimeout(() => $("f-name").focus(), 50);
+  }
+  function showPhoto() {
+    const img = $("f-photo-img");
+    if (photoState.file) { img.src = URL.createObjectURL(photoState.file); img.hidden = false; }
+    else if (photoState.id && !photoState.cleared) { img.src = photoSrc(photoState.id); img.hidden = false; }
+    else img.hidden = true;
+    $("f-photo-clear").hidden = img.hidden;
+  }
+  function closeSheet() { $("sheet-bg").hidden = true; editing = null; $("f-photo").value = ""; }
+  function err(msg) { const e = $("f-err"); e.textContent = msg; e.hidden = false; }
+  async function shrink(file) {
+    try {
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      return await new Promise(r => c.toBlob(b => r(b || file), "image/jpeg", 0.82));
+    } catch (e) { return file; }
+  }
+
+  $("f-photo").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) { photoState.file = f; photoState.cleared = false; showPhoto(); } });
+  $("f-photo-clear").onclick = () => { photoState.file = null; photoState.cleared = true; $("f-photo").value = ""; showPhoto(); };
+  $("f-cancel").onclick = closeSheet;
+  $("sheet-bg").addEventListener("click", (e) => { if (e.target === $("sheet-bg")) closeSheet(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("sheet-bg").hidden) closeSheet(); });
+  $("f-del").onclick = () => { $("f-confirm").hidden = false; };
+  $("f-confirm-no").onclick = () => { $("f-confirm").hidden = true; };
+  $("f-confirm-yes").onclick = async () => {
+    if (!editing) return;
+    const it = editing;
+    try { await db.collection("items").doc(it.id).delete(); if (it.photo && assets) assets.delete(it.photo).catch(() => {}); closeSheet(); }
+    catch (e) { err("Не получилось удалить. Попробуй ещё раз."); }
+  };
+  $("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("f-name").value.trim();
+    if (!name) { err("Напиши, что это за вещь."); $("f-name").focus(); return; }
+    const where = readWhere($("f-where"), $("f-new"));
+    if (!where) { err("Напиши название нового места хранения."); $("f-new").focus(); return; }
+    const bagId = where.in || null;
+    const parts = bagId ? [] : norm(where.place);
+    const btn = $("f-save"); btn.disabled = true; btn.textContent = "Сохраняю…";
+    try {
+      if (where.isNew) await ensurePlace(where.place);
+      let photo = photoState.cleared ? null : photoState.id;
+      const oldPhoto = photoState.id;
+      if (photoState.file && assets) {
+        const blob = await shrink(photoState.file);
+        const up = await assets.upload(blob, { type: blob.type && blob.type.startsWith("image/") ? blob.type : "image/jpeg" });
+        photo = up.id;
+      }
+      const prev = editing;
+      const t = Date.now();
+      const d = { name, place: pathStr(parts), parts, in: bagId, qty: $("f-qty").value.trim(), note: $("f-note").value.trim(), photo: photo || null, missing: prev ? !!prev.missing : false, updatedAt: t, log: prev ? (prev.log || []) : [] };
+      const moved = !prev || (prev.in || null) !== bagId || (!bagId && prev.place !== d.place);
+      if (prev && (prev.note || "") !== d.note) d.log = addLog(d.log, { t, kind: "note", note: d.note });
+      if (moved) { d.missing = false; const le = { t, kind: "move", to: labelFor(bagId ? { in: bagId } : { place: d.place }, bagMap()), in: bagId }; const mn = $("f-mnote").value.trim(); if (mn) le.note = mn; d.log = addLog(d.log, le); }
+      const ref = prev ? db.collection("items").doc(prev.id) : db.collection("items").doc();
+      await ref.set(d);
+      if (oldPhoto && oldPhoto !== photo && assets) assets.delete(oldPhoto).catch(() => {});
+      closeSheet();
+    } catch (ex) {
+      const c = ex && ex.code;
+      err(c === "too_large" ? "Фото слишком большое." : c === "quota_exceeded" || c === "quota_or_state" ? "Место в базе закончилось." : c === "invalid_argument" ? "Изменять базу может только её владелец." : "Не получилось сохранить. Проверь интернет и попробуй ещё раз.");
+    } finally { btn.disabled = false; btn.textContent = "Сохранить"; }
+  });
+
+  $("q").addEventListener("input", () => { over = {}; render(); });
+  // ---------- add chooser: item / bag / place ----------
+  function addView(v) {
+    $("add-choose").hidden = v !== "choose"; $("add-place-form").hidden = v !== "place"; $("add-bag-form").hidden = v !== "bag";
+    $("add-bg").hidden = !v;
+  }
+  function openAddPlace() { $("ap-name").value = ""; $("ap-err").hidden = true; addView("place"); setTimeout(() => $("ap-name").focus(), 50); }
+  function openAddBag() {
+    $("ab-name").value = ""; $("ab-err").hidden = true;
+    const vb = bagAt(cur);
+    const def = cur.length && !vb ? "place:" + pathStr(cur) : (vb ? "place:" + (vb.location || "") : (places[0] ? "place:" + places[0].name : ""));
+    fillWhere($("ab-where"), $("ab-new"), { value: def });
+    $("ab-new-wrap").hidden = true;
+    addView("bag"); setTimeout(() => $("ab-name").focus(), 50);
+  }
+  $("add").onclick = () => addView("choose");
+  $("add-item").onclick = () => { addView(null); openSheet(null); };
+  $("add-bag").onclick = openAddBag;
+  $("add-place").onclick = openAddPlace;
+  document.querySelectorAll(".add-cancel").forEach(b => b.onclick = () => addView(null));
+  $("add-bg").addEventListener("click", (e) => { if (e.target === $("add-bg")) addView(null); });
+  $("add-place-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("ap-name").value.replace(/\//g, " ").replace(/\s+/g, " ").trim();
+    const er = $("ap-err");
+    if (!name) { er.textContent = "Напиши название места."; er.hidden = false; return; }
+    if (places.some(p => low(p.name) === low(name))) { er.textContent = "Такое место уже есть."; er.hidden = false; return; }
+    const order = places.reduce((m, p) => Math.max(m, p.order || 0), 0) + 10;
+    try { await db.collection("places").doc().set({ name, order }); addView(null); }
+    catch (ex) { er.textContent = "Не получилось добавить место. Попробуй ещё раз."; er.hidden = false; }
+  });
+  $("add-bag-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("ab-name").value.replace(/\//g, " ").replace(/\s+/g, " ").trim();
+    const er = $("ab-err");
+    if (!name) { er.textContent = "Напиши название сумки."; er.hidden = false; return; }
+    if (bags.some(b => low(b.name) === low(name))) { er.textContent = "Сумка с таким названием уже есть."; er.hidden = false; return; }
+    const where = readWhere($("ab-where"), $("ab-new"));
+    if (!where) { er.textContent = "Напиши название нового места хранения."; er.hidden = false; $("ab-new").focus(); return; }
+    const order = bags.reduce((m, b) => Math.max(m, b.order || 0), 0) + 10;
+    try {
+      if (where.isNew) await ensurePlace(where.place);
+      const t = Date.now();
+      await db.collection("bags").doc().set({ name, location: where.place || "", order, log: where.place ? [{ t, from: "", to: where.place }] : [] });
+      addView(null);
+    } catch (ex) { er.textContent = "Не получилось добавить сумку. Попробуй ещё раз."; er.hidden = false; }
+  });
+  render();
+
+  // ---------- data ----------
+  (async () => {
+    if (!window.claude || !window.claude.use) { loaded = true; render(); setStatus("База открывается только на странице артефакта в Claude."); return; }
+    db = await window.claude.use("db");
+    if (!db) { loaded = true; render(); setStatus("Не удалось подключиться к базе. Войди в аккаунт Claude и открой страницу заново."); return; }
+    window.claude.use("assets").then(a => { assets = a; }).catch(() => {});
+    const timer = setTimeout(() => setStatus(loaded ? "Связи с базой нет, данные могут быть устаревшими." : "База пока не отвечает. Проверь интернет."), 10000);
+    const onErr = (e) => { clearTimeout(timer); loaded = true; render(); setStatus(e && e.code === "revoked" ? "Доступ к базе закрыт." : "Не удалось загрузить базу. Обнови страницу позже."); };
+    db.collection("places").orderBy("order").onSnapshot((snap) => {
+      places = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", order: v.order || 0 }; }).filter(p => p.name);
+      render();
+    }, onErr);
+    db.collection("bags").orderBy("order").onSnapshot((snap) => {
+      bags = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", location: v.location || "", order: v.order || 0, log: Array.isArray(v.log) ? v.log : [] }; }).filter(b => b.name);
+      render();
+    }, onErr);
+    db.collection("items").onSnapshot((snap) => {
+      items = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", place: v.place || "", parts: Array.isArray(v.parts) ? v.parts : norm(v.place), in: v.in || null, qty: v.qty || "", note: v.note || "", photo: v.photo || null, missing: !!v.missing, updatedAt: v.updatedAt || 0, log: Array.isArray(v.log) ? v.log : [] }; });
+      loaded = true;
+      if (!snap.metadata.fromCache) { clearTimeout(timer); setStatus(""); }
+      render();
+    }, onErr);
+  })();
+})();
+</script>
+</body>
+</html>

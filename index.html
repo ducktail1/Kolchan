@@ -62,6 +62,24 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font-body); 
 input, textarea, select { font-size: 16px !important; }
 .wrap { max-width: 720px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 110px; display: flex; flex-direction: column; gap: 14px; }
 header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sheet { overscroll-behavior: contain; }
+.clr-wrap { position: relative; display: block; min-width: 0; }
+.clr-wrap:has(> input[hidden]) { display: none; }
+input.has-clr { padding-right: 44px !important; }
+input[type="search"]::-webkit-search-cancel-button, input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; display: none; }
+.clr { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.clr::before { content: ""; width: 22px; height: 22px; border-radius: 50%; background: var(--line); position: absolute; }
+.clr svg { position: relative; }
+input:placeholder-shown + .clr { display: none; }
+.ttl { display: flex; align-items: center; gap: 6px; }
+.home { border: 0; background: none; padding: 6px; margin-left: -6px; color: var(--accent); display: grid; place-items: center; border-radius: 10px; }
+.tr-row { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); }
+.tr-row:last-child { border-bottom: 0; }
+.tr-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.tr-name { font-weight: 600; overflow-wrap: anywhere; }
+.tr-meta { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tr-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.tr-btns button { padding: 8px 12px; font-size: 14px; }
 h1 { font-family: var(--font-display); font-weight: 600; font-size: 22px; margin: 0; letter-spacing: -.01em; }
 h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0; font-weight: 600; }
 .count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -122,6 +140,20 @@ button.link { border: 0; background: none; padding: 4px 2px; color: var(--accent
 .note { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
 .empty { padding: 28px 16px; text-align: center; color: var(--muted); }
 .empty strong { display: block; color: var(--ink); font-size: 16px; margin-bottom: 4px; }
+.fab-left { right: auto !important; left: max(16px, calc(env(safe-area-inset-left, 0px) + 16px)); background: var(--surface); color: var(--ink); border: 1px solid var(--line); font-weight: 600; }
+.mv-sheet { padding-bottom: 0 !important; height: calc(100% - env(safe-area-inset-top, 0px) - 12px); max-height: none !important; overflow: hidden !important; gap: 10px !important; }
+.mv-sheet > h2, .mv-sheet > .note, .mv-sheet > input { flex: none; }
+.mv-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.mv-list > * { flex: none; }
+.mv-sheet.typing .mv-foot > :not(.mv-done) { display: none !important; }
+.mv-done { display: none; }
+.mv-sheet.typing .mv-done { display: flex !important; justify-content: space-between; align-items: center; gap: 8px; }
+.mv-h { padding: 12px 12px 4px; }
+.mv-add { display: flex; flex-direction: column; gap: 8px; padding: 14px 12px; align-items: stretch; text-align: center; }
+.mv-foot { flex: none; background: var(--bg); border-top: 1px solid var(--line); margin: 0 -16px; padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 12px); display: flex; flex-direction: column; gap: 8px; }
+.chk { display: flex; gap: 10px; align-items: center; font-size: 14px; }
+.chk input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); }
+.chk label { text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--ink); font-weight: 400; display: inline; }
 .fab { position: fixed; right: max(16px, calc(env(safe-area-inset-right, 0px) + 16px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); padding: 14px 20px; border-radius: 14px; box-shadow: 0 6px 20px rgba(0,0,0,.18); z-index: 5; }
 .bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--surface); border-top: 1px solid var(--line); padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 12px) max(16px, env(safe-area-inset-left, 0px)); }
 .bar-in { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
@@ -157,7 +189,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 <body>
 <div class="wrap">
   <header>
-    <h1>Колчан</h1>
+    <div class="ttl"><button type="button" class="home" id="home-btn" aria-label="На главную" title="На главную"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg></button><h1>Колчан</h1></div>
     <div class="hdr-right"><div class="count" id="count">Загружаю базу…</div><button type="button" class="link" id="data-open">Данные</button></div>
   </header>
   <div class="search">
@@ -165,6 +197,10 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   </div>
   <nav class="crumbs" id="crumbs" aria-label="Место"></nav>
 
+  <div class="group" id="tr-group" hidden>
+    <button type="button" class="sec" id="sec-tr" aria-expanded="false"><span class="sec-t">Перемещения</span><span class="sec-n" id="sec-tr-n"></span><span class="caret" aria-hidden="true"></span></button>
+    <div class="list" id="tr-list" hidden></div>
+  </div>
   <div class="group" id="bags-group" hidden>
     <button type="button" class="sec" id="sec-bags" aria-expanded="false"><span class="sec-t">Сумки</span><span class="sec-n" id="sec-bags-n"></span><span class="caret" aria-hidden="true"></span></button>
     <div class="chips" id="bags"></div>
@@ -219,6 +255,45 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   </div>
 </div>
 <button class="primary fab" id="add" hidden>+ Добавить</button>
+<button class="fab fab-left" id="mv-open" hidden>⇄ Переместить</button>
+<div class="sheet-bg" id="mv-bg" hidden>
+  <div class="sheet" id="mv-choose">
+    <h2>Что перемещаем?</h2>
+    <div class="choose">
+      <button type="button" id="mv-pick-send"><b>Отправить сумку</b><span>Сложить вещи в сумку и отправить её</span></button>
+      <button type="button" id="mv-pick-edit"><b>Изменить перемещение</b><span>Сумка в пути: добавить или убрать вещи, поменять «куда»</span></button>
+      <button type="button" id="mv-pick-recv"><b>Принять сумку</b><span>Сумка приехала: отметить, что на месте</span></button>
+      <button type="button" id="mv-pick-items"><b>Вещи</b><span>Переложить одну или несколько вещей</span></button>
+    </div>
+    <div class="actions"><div class="right"><button type="button" class="mv-cancel">Отмена</button></div></div>
+  </div>
+  <div class="sheet" id="mv-bags" hidden>
+    <h2 id="mv-bags-title">Какую сумку?</h2>
+    <div class="choose" id="mv-bag-list"></div>
+    <div class="actions"><button type="button" class="mv-back">Назад</button><div class="right"><button type="button" class="mv-cancel">Отмена</button></div></div>
+  </div>
+  <div class="sheet mv-sheet" id="mv-items" hidden>
+    <h2 id="mv-items-title"></h2>
+    <div class="note" id="mv-sub"></div>
+    <input id="mv-q" type="search" placeholder="Найти вещь" autocomplete="off">
+    <div class="mv-list" id="mv-list"></div>
+    <div class="mv-foot">
+      <div class="mv-done"><span class="note" id="mv-count2"></span><button type="button" class="primary" id="mv-done">Готово</button></div>
+      <div class="note" id="mv-count"></div>
+      <label id="mv-to-wrap"><span id="mv-to-label">Куда</span>
+        <select id="mv-to"></select>
+      </label>
+      <label id="mv-new-wrap" hidden>Новое место хранения <span class="hint">можно с уровнями: Дача / Сарай</span>
+        <input id="mv-new" placeholder="Например, Гараж" autocomplete="off">
+      </label>
+      <div class="chk" id="mv-transit-wrap"><input type="checkbox" id="mv-transit" checked><label for="mv-transit">Через «В пути»: потом принять сумку на месте</label></div>
+      <input id="mv-note" placeholder="Заметка к перемещению, например «СДЭК до Сочи»" autocomplete="off">
+      <div class="err" id="mv-err" hidden></div>
+      <div class="actions"><button type="button" class="mv-back">Назад</button><div class="right"><button type="button" class="mv-cancel">Отмена</button><button type="button" class="primary" id="mv-go">Переместить</button></div></div>
+    </div>
+  </div>
+</div>
+
 
 <div class="bar" id="bar" hidden>
   <div class="bar-in">
@@ -245,7 +320,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 
 <div class="sheet-bg" id="add-bg" hidden>
   <div class="sheet" id="add-choose">
-    <h2>Что добавить?</h2>
+    <h2 id="add-title">Что добавить?</h2>
     <div class="choose">
       <button type="button" id="add-item"><b>Вещь</b><span>Куртку, маску, рацию…</span></button>
       <button type="button" id="add-bag"><b>Сумку</b><span>Рюкзак или чехол, в который кладёшь вещи</span></button>
@@ -280,8 +355,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 <div class="sheet-bg" id="sheet-bg" hidden>
   <form class="sheet" id="form" novalidate>
     <h2 id="f-title">Новая вещь</h2>
-    <label>Что
-      <input id="f-name" required placeholder="Например, маска" autocomplete="off">
+    <label>Что <span class="hint" id="f-name-hint">можно несколько через запятую</span>
+      <input id="f-name" required placeholder="Например, маска, баф, варежки" autocomplete="off">
     </label>
     <label>Где лежит
       <select id="f-where"></select>
@@ -332,6 +407,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <h2>Данные</h2>
     <div class="note" id="d-stat"></div>
     <div class="note" id="d-last"></div>
+    <div class="note">Версия Колчана: <b>1.1.0</b></div>
     <div class="dataBtns">
       <button type="button" class="primary" id="d-export">Выгрузить файл</button>
       <label>Загрузить файл <span class="hint">заменит всю базу на этом телефоне</span>
@@ -358,7 +434,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   const photoSrc = (id) => (window.__photoSrc ? window.__photoSrc(id) : "/_blob/" + id);
   // Collapsible sections: closed by default on the start screen, open when searching or inside a place
   let over = {}, lastOpen = {};
-  ["bags", "places", "items"].forEach(k => { const b = document.getElementById("sec-" + k); if (b) b.onclick = () => { over[k] = !lastOpen[k]; render(); }; });
+  ["tr", "bags", "places", "items"].forEach(k => { const b = document.getElementById("sec-" + k); if (b) b.onclick = () => { over[k] = !lastOpen[k]; render(); }; });
   let editing = null, photoState = null;
 
   const norm = (s) => (s || "").split("/").map(x => x.trim()).filter(Boolean);
@@ -407,11 +483,11 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     selEl.appendChild(g2);
     const add = document.createElement("option"); add.value = NEW; add.textContent = "+ Добавить место хранения…"; selEl.appendChild(add);
     if (o.value !== undefined) selEl.value = o.value;
-    newEl.value = ""; newEl.hidden = true; if (newEl.parentElement && newEl.parentElement.id.endsWith("-row")) newEl.parentElement.hidden = true;
+    newEl.value = ""; newEl.hidden = true; const rowEl = newEl.closest('[id$="-row"]'); if (rowEl) rowEl.hidden = true;
     selEl.onchange = () => {
       const isNew = selEl.value === NEW;
       newEl.hidden = !isNew;
-      if (newEl.parentElement && newEl.parentElement.id.endsWith("-row")) newEl.parentElement.hidden = !isNew;
+      if (rowEl) rowEl.hidden = !isNew;
       if (newEl.closest("label") && newEl.closest("label").id) newEl.closest("label").hidden = !isNew;
       if (isNew) newEl.focus();
     };
@@ -467,7 +543,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
         const btn = document.createElement("button"); btn.type = "button"; btn.className = "chip bag";
         btn.append(b.name + " ");
         const c = document.createElement("span"); c.textContent = n; btn.appendChild(c);
-        const w = document.createElement("small"); w.textContent = "· " + (b.location || "место не указано"); btn.appendChild(w);
+        const w = document.createElement("small"); w.textContent = "· " + (b.dest ? "В пути → " + b.dest : (b.location || "место не указано")); btn.appendChild(w);
         btn.onclick = () => { cur = norm(b.location).concat(b.name); over = {}; endMode(); render(); };
         bx.appendChild(btn);
       });
@@ -478,6 +554,33 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       }
     }
     $("bags-group").hidden = !atRoot || !db || (q && !bagsShown);
+    // active moves: bags on the way
+    const trBags = bags.filter(b => b.dest || b.location === "В пути");
+    $("tr-group").hidden = !atRoot || !db || !!q;
+    lastOpen.tr = "tr" in over ? over.tr : false;
+    $("sec-tr").setAttribute("aria-expanded", String(lastOpen.tr));
+    $("sec-tr-n").textContent = trBags.length || "";
+    const trl = $("tr-list"); trl.hidden = !lastOpen.tr || $("tr-group").hidden; trl.textContent = "";
+    if (!trBags.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "Сейчас ничего не в пути."; trl.appendChild(e); }
+    trBags.forEach(b => {
+      const n = items.filter(it => it.in === b.id).length;
+      const sent = (b.log || []).filter(x => x.to === "В пути").slice(-1)[0];
+      const row = document.createElement("div"); row.className = "tr-row";
+      const top = document.createElement("div"); top.className = "tr-top";
+      const nm = document.createElement("div"); nm.className = "tr-name"; nm.textContent = b.name;
+      const ct = document.createElement("div"); ct.className = "tr-meta"; ct.textContent = n + " " + plural(n, ["вещь", "вещи", "вещей"]);
+      top.append(nm, ct);
+      const meta = document.createElement("div"); meta.className = "tapes";
+      const t1 = document.createElement("span"); t1.className = "tape"; t1.textContent = (sent && sent.from ? sent.from + " → " : "") + (b.dest || "куда — не указано"); meta.appendChild(t1);
+      if (sent) { const t2 = document.createElement("span"); t2.className = "tr-meta"; t2.textContent = "с " + fmt.format(new Date(sent.t)); meta.appendChild(t2); }
+      const btns = document.createElement("div"); btns.className = "tr-btns";
+      const mk2 = (label, fn, cls) => { const x = document.createElement("button"); x.type = "button"; x.textContent = label; if (cls) x.className = cls; x.onclick = fn; btns.appendChild(x); };
+      mk2("Что внутри", () => { cur = norm(b.location).concat(b.name); over = {}; endMode(); render(); window.scrollTo(0, 0); });
+      mk2("Изменить", () => openItemPick("edit", b));
+      mk2("Принять", () => openItemPick("recv", b), "primary");
+      row.append(top, meta, btns);
+      trl.appendChild(row);
+    });
 
     // place chips (children of current level); while searching, only where matches are
     const inPlace = matches.filter(x => cur.every((p, i) => x.e.parts[i] === p));
@@ -522,7 +625,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     $("bag-panel").hidden = !viewBag || showMissing;
     if (viewBag) {
       const w = $("bag-where"); w.textContent = "«" + viewBag.name + "» сейчас: ";
-      const bb = document.createElement("b"); bb.textContent = viewBag.location || "место не указано"; w.appendChild(bb);
+      const bb = document.createElement("b"); bb.textContent = viewBag.dest ? "В пути → " + viewBag.dest : (viewBag.location || "место не указано"); w.appendChild(bb);
     }
 
     // list
@@ -537,13 +640,21 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     $("list").hidden = !lastOpen.items; $("toolbar").hidden = !lastOpen.items;
     $("pick-start").hidden = !db || !shown.length || !!mode;
     $("add").hidden = !db || !!mode;
+    $("mv-open").hidden = !db || !!mode;
 
     const list = $("list"); list.textContent = "";
     if (!shown.length) {
       const e = document.createElement("div"); e.className = "empty";
       const st = document.createElement("strong");
       if (!loaded) { st.textContent = "Загружаю…"; e.append(st); }
-      else if (q) { st.textContent = "Ничего не нашлось"; e.append(st, "Попробуй другое слово."); }
+      else if (q) {
+        st.textContent = "Ничего не нашлось"; e.append(st, "Попробуй другое слово или добавь.");
+        const raw = $("q").value.trim();
+        const ab = document.createElement("button"); ab.type = "button"; ab.className = "primary"; ab.style.marginTop = "14px";
+        ab.textContent = "+ Добавить «" + raw + "»";
+        ab.onclick = () => openChooser(raw);
+        const wrap = document.createElement("div"); wrap.appendChild(ab); e.appendChild(wrap);
+      }
       else if (viewBag) { st.textContent = "Сумка пустая"; e.append(st, "Нажми «Добавить» или открой место и переложи вещи сюда через «Выбрать несколько»."); }
       else if (cur.length) { st.textContent = "Здесь пока пусто"; e.append(st, "Нажми «Добавить», и это место подставится само."); }
       else { st.textContent = "Здесь появятся твои вещи"; e.append(st, "Выбери место сверху и нажми «Добавить»."); }
@@ -663,7 +774,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     try {
       if (dest.isNew) await ensurePlace(to);
       const e = { t, from: b.location || "", to }; const note = $("bag-move-note").value.trim(); if (note) e.note = note;
-      await db.collection("bags").doc(b.id).set({ name: b.name, location: to, order: b.order || 0, log: addLog(b.log, e) });
+      await db.collection("bags").doc(b.id).set({ name: b.name, location: to, dest: null, order: b.order || 0, log: addLog(b.log, e) });
       cur = norm(to).concat(b.name); $("bag-move-form").hidden = true; $("bag-move-note").value = ""; render();
     } catch (e) { setStatus("Не получилось перевезти сумку. Попробуй ещё раз."); }
   };
@@ -718,6 +829,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   function openSheet(it) {
     editing = it || null;
     $("f-title").textContent = it ? "Вещь" : "Новая вещь";
+    $("f-name-hint").hidden = !!it;
+    $("f-name").placeholder = it ? "Название вещи" : "Например, маска, баф, варежки";
     $("f-name").value = it ? it.name : "";
     const vb = bagAt(cur);
     const cv = it ? (it.in ? "bag:" + it.in : (it.place ? "place:" + it.place : "")) : (vb ? "bag:" + vb.id : (cur.length ? "place:" + pathStr(cur) : ""));
@@ -773,6 +886,10 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     e.preventDefault();
     const name = $("f-name").value.trim();
     if (!name) { err("Напиши, что это за вещь."); $("f-name").focus(); return; }
+    // several new items at once: "маска, баф, варежки"
+    const names = editing ? [name] : name.split(",").map(x => x.replace(/\s+/g, " ").trim()).filter(Boolean);
+    if (!names.length) { err("Напиши, что это за вещь."); $("f-name").focus(); return; }
+    if (names.length > 1 && photoState.file) { err("Фото можно прикрепить только к одной вещи. Убери фото или добавь вещи по одной."); return; }
     const where = readWhere($("f-where"), $("f-new"));
     if (!where) { err("Напиши название нового места хранения."); $("f-new").focus(); return; }
     const bagId = where.in || null;
@@ -793,8 +910,12 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       const moved = !prev || (prev.in || null) !== bagId || (!bagId && prev.place !== d.place);
       if (prev && (prev.note || "") !== d.note) d.log = addLog(d.log, { t, kind: "note", note: d.note });
       if (moved) { d.missing = false; const le = { t, kind: "move", to: labelFor(bagId ? { in: bagId } : { place: d.place }, bagMap()), in: bagId }; const mn = $("f-mnote").value.trim(); if (mn) le.note = mn; d.log = addLog(d.log, le); }
-      const ref = prev ? db.collection("items").doc(prev.id) : db.collection("items").doc();
-      await ref.set(d);
+      if (prev) await db.collection("items").doc(prev.id).set(d);
+      else {
+        let i = 0;
+        for (const nm of names) { await db.collection("items").doc().set(Object.assign({}, d, { name: nm, updatedAt: t + i, log: d.log.map(x => Object.assign({}, x, { t: x.t + i })) })); i++; }
+        if (names.length > 1) setStatus("Добавлено " + names.length + " " + plural(names.length, ["вещь", "вещи", "вещей"]) + ": " + names.join(", ") + ".");
+      }
       if (oldPhoto && oldPhoto !== photo && assets) assets.delete(oldPhoto).catch(() => {});
       closeSheet();
     } catch (ex) {
@@ -803,23 +924,359 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     } finally { btn.disabled = false; btn.textContent = "Сохранить"; }
   });
 
+  // ---------- move: send bag / receive bag / move items ----------
+  const TRANSIT = "В пути";
+  let mvMode = null, mvBag = null, mvSel = new Set(), mvStep = null;
+  function mvView(v) {
+    mvStep = v;
+    $("mv-choose").hidden = v !== "choose"; $("mv-bags").hidden = v !== "bags"; $("mv-items").hidden = v !== "items";
+    $("mv-bg").hidden = !v;
+  }
+  function mvClose() { mvView(null); mvMode = null; mvBag = null; mvSel.clear(); }
+  $("mv-open").onclick = () => { mvMode = null; mvView("choose"); };
+  document.querySelectorAll(".mv-cancel").forEach(b => b.onclick = mvClose);
+  document.querySelectorAll(".mv-back").forEach(b => b.onclick = () => {
+    if (mvStep === "items" && mvMode !== "items") openBagPick(mvMode); else mvView("choose");
+  });
+  $("mv-bg").addEventListener("click", (e) => { if (e.target === $("mv-bg")) mvClose(); });
+
+  function openBagPick(kind) {
+    mvMode = kind;
+    const list = $("mv-bag-list"); list.textContent = "";
+    const pool = kind === "send" ? bags : bags.filter(b => b.dest || b.location === TRANSIT);
+    $("mv-bags-title").textContent = kind === "recv" ? "Какая сумка приехала?" : kind === "edit" ? "Какое перемещение изменить?" : "Какую сумку отправляем?";
+    if (!pool.length) {
+      const p = document.createElement("div"); p.className = "notice";
+      p.textContent = kind !== "send" ? "Сейчас ни одна сумка не в пути." : "Сумок пока нет. Добавь сумку через «+ Добавить».";
+      list.appendChild(p);
+    }
+    pool.forEach(b => {
+      const n = items.filter(it => it.in === b.id).length;
+      const btn = document.createElement("button"); btn.type = "button";
+      const t = document.createElement("b"); t.textContent = b.name;
+      const s = document.createElement("span");
+      s.textContent = (b.dest ? "В пути → " + b.dest : (b.location || "место не указано")) + " · " + n + " " + plural(n, ["вещь", "вещи", "вещей"]);
+      btn.append(t, s);
+      btn.onclick = () => openItemPick(kind, b);
+      list.appendChild(btn);
+    });
+    mvView("bags");
+  }
+  $("mv-pick-send").onclick = () => openBagPick("send");
+  $("mv-pick-recv").onclick = () => openBagPick("recv");
+  $("mv-pick-edit").onclick = () => openBagPick("edit");
+  $("mv-pick-items").onclick = () => openItemPick("items", null);
+
+  function openItemPick(kind, bag) {
+    mvMode = kind; mvBag = bag; mvSel = new Set();
+    $("mv-q").value = ""; $("mv-note").value = ""; $("mv-err").hidden = true;
+    if (kind === "edit") {
+      items.filter(it => it.in === bag.id).forEach(it => mvSel.add(it.id));
+      $("mv-items-title").textContent = "Изменить: «" + bag.name + "»";
+      $("mv-sub").textContent = "Сумка в пути" + (bag.dest ? " → " + bag.dest : "") + ". Добавь или убери вещи, можно поменять «куда».";
+      $("mv-to-label").textContent = "Куда едет";
+      fillWhere($("mv-to"), $("mv-new"), { value: bag.dest ? "place:" + bag.dest : "" });
+      $("mv-transit-wrap").hidden = true; $("mv-transit").checked = true;
+      $("mv-go").textContent = "Сохранить";
+      $("mv-q").hidden = false;
+    } else if (kind === "send") {
+      items.filter(it => it.in === bag.id).forEach(it => mvSel.add(it.id));
+      $("mv-items-title").textContent = "Отправить «" + bag.name + "»";
+      $("mv-sub").textContent = "Отметь, что едет в сумке. Сейчас она: " + (bag.location || "место не указано") + ".";
+      $("mv-to-label").textContent = "Куда отправляем";
+      fillWhere($("mv-to"), $("mv-new"), { value: "" });
+      const firstOther = places.find(p => p.name !== bag.location && p.name !== TRANSIT);
+      if (firstOther) $("mv-to").value = "place:" + firstOther.name;
+      $("mv-transit-wrap").hidden = false; $("mv-transit").checked = true;
+      $("mv-go").textContent = "Отправить";
+      $("mv-q").hidden = false;
+    } else if (kind === "recv") {
+      items.filter(it => it.in === bag.id).forEach(it => mvSel.add(it.id));
+      $("mv-items-title").textContent = "Принять «" + bag.name + "»";
+      $("mv-sub").textContent = "Отметь, что приехало. Неотмеченное получит пометку «не нашёл».";
+      $("mv-to-label").textContent = "Куда приехала";
+      fillWhere($("mv-to"), $("mv-new"), { value: "" });
+      if (bag.dest) $("mv-to").value = "place:" + bag.dest;
+      $("mv-transit-wrap").hidden = true;
+      $("mv-go").textContent = "Принять";
+      $("mv-q").hidden = true;
+    } else {
+      $("mv-items-title").textContent = "Переместить вещи";
+      $("mv-sub").textContent = "Отметь вещи, потом выбери, куда их положить.";
+      $("mv-to-label").textContent = "Куда";
+      fillWhere($("mv-to"), $("mv-new"), { bags: true, value: "" });
+      $("mv-transit-wrap").hidden = true;
+      $("mv-go").textContent = "Переместить";
+      $("mv-q").hidden = false;
+    }
+    $("mv-new-wrap").hidden = true;
+    $("mv-items").classList.remove("typing");
+    renderPick();
+    mvView("items");
+    $("mv-list").scrollTop = 0;
+  }
+
+  function renderPick() {
+    const q = low($("mv-q").value.trim());
+    const bm = bagMap();
+    let rows = items.map(it => ({ it, e: eff(it, bm) }));
+    if (mvMode === "recv") rows = rows.filter(x => x.it.in === mvBag.id);
+    if (q) rows = rows.filter(x => low(x.it.name).includes(q) || low(pathStr(x.e.parts)).includes(q));
+    const rank = (x) => {
+      if (mvMode === "send" || mvMode === "edit") {
+        if (x.it.in === mvBag.id) return 0;
+        const loc = norm(mvBag.location);
+        if (loc.length && loc.every((p, i) => x.e.parts[i] === p)) return 1;
+        return 2;
+      }
+      return 0;
+    };
+    rows.sort((a, b) => (rank(a) - rank(b)) || pathStr(a.e.parts).localeCompare(pathStr(b.e.parts), "ru") || a.it.name.localeCompare(b.it.name, "ru"));
+    const list = $("mv-list"); list.textContent = "";
+    let lastRank = -1;
+    const heads = (mvMode === "send" || mvMode === "edit") ? ["Уже в сумке", "Там же, где сумка: " + (mvBag.location || "?"), "Остальные вещи"] : [];
+    if (!rows.length) {
+      const e = document.createElement("div"); e.className = "empty";
+      e.textContent = mvMode === "recv" ? "В сумке ничего нет." : "Ничего не нашлось.";
+      list.appendChild(e);
+    }
+    rows.forEach(x => {
+      const r = rank(x);
+      if (heads.length && r !== lastRank) { const h = document.createElement("h3"); h.className = "mv-h"; h.textContent = heads[r]; list.appendChild(h); lastRank = r; }
+      const row = document.createElement("button"); row.type = "button";
+      row.className = "item pick" + (mvSel.has(x.it.id) ? " on" : "");
+      const bx = document.createElement("div"); bx.className = "box"; bx.textContent = mvSel.has(x.it.id) ? "✓" : "";
+      const th = document.createElement("div"); th.className = "thumb"; th.textContent = (x.it.name || "?")[0].toUpperCase();
+      if (x.it.photo) { const im = document.createElement("img"); im.src = photoSrc(x.it.photo); im.alt = ""; im.onerror = () => im.remove(); th.textContent = ""; th.appendChild(im); }
+      const body = document.createElement("div"); body.className = "body";
+      const nm = document.createElement("div"); nm.className = "name"; nm.textContent = x.it.name;
+      const tp = document.createElement("div"); tp.className = "tapes";
+      if (x.e.bag) { const t1 = document.createElement("span"); t1.className = "tape bagt"; t1.textContent = x.e.bag.name; tp.appendChild(t1); }
+      const t2 = document.createElement("span"); t2.className = "tape"; t2.textContent = x.e.bag ? (x.e.bag.location || "?") : (x.it.place || "место не указано"); tp.appendChild(t2);
+      body.append(nm, tp);
+      row.append(bx, th, body);
+      row.onclick = () => { mvSel.has(x.it.id) ? mvSel.delete(x.it.id) : mvSel.add(x.it.id); renderPick(); };
+      list.appendChild(row);
+    });
+    // create new items right from the search
+    const raw = $("mv-q").value.trim();
+    if (raw && mvMode !== "recv") {
+      const names = raw.split(",").map(x => x.replace(/\s+/g, " ").trim()).filter(Boolean);
+      const exists = names.every(nm => items.some(it => low(it.name) === low(nm)));
+      if (!exists) {
+        const box = document.createElement("div"); box.className = "mv-add";
+        const ab = document.createElement("button"); ab.type = "button"; ab.className = "primary";
+        ab.textContent = "+ Добавить «" + names.join(", ") + "»" + (mvBag ? " в «" + mvBag.name + "»" : "");
+        ab.onclick = () => mvCreate(names);
+        box.appendChild(ab);
+        if (!mvBag) { const h = document.createElement("div"); h.className = "note"; h.textContent = "Новая вещь сразу будет отмечена, место выберешь внизу в «Куда»."; box.appendChild(h); }
+        list.appendChild(box);
+      }
+    }
+    const n = mvSel.size;
+    $("mv-count").textContent = "Отмечено: " + n + " " + plural(n, ["вещь", "вещи", "вещей"]);
+    $("mv-count2").textContent = $("mv-count").textContent;
+    $("mv-go").disabled = mvMode === "items" && !n;
+  }
+  async function mvCreate(names) {
+    const t = Date.now(); let i = 0;
+    try {
+      for (const nm of names) {
+        const id = "i" + (t + i).toString(36) + Math.random().toString(36).slice(2, 6);
+        const d = { name: nm, place: "", parts: [], in: null, qty: "", note: "", photo: null, missing: false, updatedAt: t + i, log: [] };
+        if (mvBag) { d.in = mvBag.id; d.log = [{ t: t + i, kind: "move", to: "в «" + mvBag.name + "» (" + (mvBag.location || "?") + ")", in: mvBag.id }]; }
+        await db.collection("items").doc(id).set(d);
+        mvSel.add(id); i++;
+      }
+      $("mv-q").value = ""; renderPick();
+      setTimeout(renderPick, 300);
+    } catch (e) { const er = $("mv-err"); er.textContent = "Не получилось добавить вещь. Попробуй ещё раз."; er.hidden = false; }
+  }
+  $("mv-q").addEventListener("input", renderPick);
+  $("mv-q").addEventListener("focus", () => $("mv-items").classList.add("typing"));
+  $("mv-q").addEventListener("blur", () => setTimeout(() => { if (document.activeElement !== $("mv-q")) $("mv-items").classList.remove("typing"); }, 150));
+  $("mv-done").onclick = () => { $("mv-q").blur(); $("mv-items").classList.remove("typing"); };
+  $("mv-list").addEventListener("touchstart", () => { if (document.activeElement === $("mv-q")) $("mv-q").blur(); }, { passive: true });
+
+  async function setBag(b, patch) {
+    const d = { name: b.name, location: b.location || "", order: b.order || 0, log: b.log || [], dest: b.dest || null };
+    Object.assign(d, patch);
+    await db.collection("bags").doc(b.id).set(d);
+  }
+
+  $("mv-go").onclick = async () => {
+    const er = $("mv-err"); er.hidden = true;
+    const dest = readWhere($("mv-to"), $("mv-new"));
+    if (!dest) { er.textContent = "Напиши название нового места хранения."; er.hidden = false; $("mv-new").focus(); return; }
+    const note = $("mv-note").value.trim();
+    const btn = $("mv-go"); const label = btn.textContent; btn.disabled = true; btn.textContent = "Сохраняю…";
+    try {
+      if (dest.isNew) await ensurePlace(dest.place);
+      const t = Date.now();
+      if (mvMode === "items") {
+        for (const id of mvSel) { const it = items.find(x => x.id === id); if (it) await moveItem(it, dest, note); }
+      } else if (mvMode === "edit") {
+        const b = mvBag, to = dest.place || b.dest || "";
+        const sent = (b.log || []).filter(x => x.to === TRANSIT).slice(-1)[0];
+        const origin = (sent && sent.from) || b.location || "";
+        let added = 0, removed = 0;
+        for (const it of items.slice()) {
+          const want = mvSel.has(it.id);
+          if (want && it.in !== b.id) { await moveItem(it, { in: b.id }, note || "добавил в пути"); added++; }
+          if (!want && it.in === b.id) { await moveItem(it, { place: origin }, note || ("убрал из «" + b.name + "», осталась: " + origin)); removed++; }
+        }
+        if (to && to !== b.dest) await setBag(b, { dest: to, log: addLog(b.log, { t: t + 1, from: b.location || "", to: b.location || TRANSIT, note: "направление изменено → " + to + (note ? " — " + note : "") }) });
+      } else if (mvMode === "send") {
+        const b = mvBag, to = dest.place || "";
+        if (!to) { er.textContent = "Выбери, куда отправляешь сумку."; er.hidden = false; return; }
+        let packed = 0, unpacked = 0;
+        for (const it of items.slice()) {
+          const want = mvSel.has(it.id);
+          if (want && it.in !== b.id) { await moveItem(it, { in: b.id }, note); packed++; }
+          if (!want && it.in === b.id) { await moveItem(it, { place: b.location || "" }, "выложил из «" + b.name + "»"); unpacked++; }
+        }
+        const transit = $("mv-transit").checked && to !== TRANSIT;
+        if (transit) {
+          await ensurePlace(TRANSIT);
+          await setBag(b, { location: TRANSIT, dest: to, log: addLog(b.log, { t: t + 1, from: b.location || "", to: TRANSIT, note: "→ " + to + (note ? " — " + note : "") }) });
+        } else if (to !== b.location) {
+          await setBag(b, { location: to, dest: null, log: addLog(b.log, Object.assign({ t: t + 1, from: b.location || "", to }, note ? { note } : {})) });
+        }
+      } else if (mvMode === "recv") {
+        const b = mvBag, to = dest.place || b.dest || b.location || "";
+        if (!to) { er.textContent = "Выбери, куда приехала сумка."; er.hidden = false; return; }
+        await setBag(b, { location: to, dest: null, log: addLog(b.log, { t, from: b.location || "", to, note: "принял" + (note ? " — " + note : "") }) });
+        let miss = 0;
+        for (const it of items.filter(x => x.in === b.id)) {
+          const ok = mvSel.has(it.id); if (!ok) miss++;
+          const d = base(it); d.missing = !ok; if (!ok) d.updatedAt = t + 2;
+          d.log = addLog(it.log, { t: t + 2, kind: ok ? "check-ok" : "check-miss", to: "«" + b.name + "» (" + to + ")" });
+          await db.collection("items").doc(it.id).set(d);
+        }
+      }
+      mvClose(); setStatus(""); render();
+    } catch (ex) {
+      er.textContent = "Не получилось сохранить. Проверь интернет и попробуй ещё раз."; er.hidden = false;
+    } finally { btn.disabled = false; btn.textContent = label; }
+  };
+
+  // clear (×) button inside every text field
+  document.querySelectorAll('input[type="search"], input[type="text"], input:not([type])').forEach(inp => {
+    if (!inp.placeholder) inp.placeholder = " ";
+    const par = inp.parentElement;
+    const wrap = document.createElement("span"); wrap.className = "clr-wrap";
+    const dir = getComputedStyle(par).flexDirection;
+    const isFlex = /flex/.test(getComputedStyle(par).display);
+    wrap.style.flex = isFlex && dir.startsWith("row") ? (inp.style.flexBasis ? "1 1 " + inp.style.flexBasis : "1 1 0%") : "none";
+    if (inp.style.flexBasis) inp.style.flexBasis = "";
+    par.insertBefore(wrap, inp); wrap.appendChild(inp);
+    inp.classList.add("has-clr");
+    const b = document.createElement("button"); b.type = "button"; b.className = "clr"; b.setAttribute("aria-label", "Стереть"); b.tabIndex = -1;
+    b.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+    b.addEventListener("pointerdown", e => e.preventDefault());
+    b.addEventListener("mousedown", e => e.preventDefault());
+    b.addEventListener("click", () => { inp.value = ""; inp.dispatchEvent(new Event("input", { bubbles: true })); inp.focus(); });
+    wrap.appendChild(b);
+  });
+  // ---------- gestures on pop-up windows: swipe from the left edge = back, swipe down from the header = close ----------
+  function sheetClose(sh) {
+    const bg = sh.closest(".sheet-bg"); if (!bg) return;
+    if (bg.id === "add-bg") addView(null);
+    else if (bg.id === "mv-bg") mvClose();
+    else if (bg.id === "sheet-bg") closeSheet();
+    else bg.hidden = true;
+  }
+  function sheetBack(sh) {
+    switch (sh.id) {
+      case "add-place-form": case "add-bag-form": addView("choose"); break;
+      case "mv-bags": mvView("choose"); break;
+      case "mv-items": if (mvMode && mvMode !== "items") openBagPick(mvMode); else mvView("choose"); break;
+      default: sheetClose(sh);
+    }
+  }
+  let g = null;
+  document.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1) { g = null; return; }
+    const bgEl = e.target.classList && e.target.classList.contains("sheet-bg") ? e.target : null;
+    const sh = e.target.closest(".sheet") || (bgEl ? bgEl.querySelector(".sheet:not([hidden])") : null);
+    if (!sh || sh.closest("[hidden]")) { g = null; return; }
+    const tch = e.touches[0];
+    const h2 = sh.querySelector("h2");
+    const headBottom = h2 ? h2.getBoundingClientRect().bottom + 10 : sh.getBoundingClientRect().top + 64;
+    let kind = null;
+    const scroller = e.target.closest(".mv-list") || sh;
+    if (tch.clientX < 40) kind = "back";
+    else if (tch.clientY <= headBottom && !e.target.closest("input, select, textarea, button")) kind = "down";
+    else if (!e.target.closest("input, select, textarea") && scroller.scrollTop <= 0 && (scroller === sh || sh.scrollTop <= 0)) kind = "pull";
+    g = kind ? { sh, kind, x: tch.clientX, y: tch.clientY, t0: Date.now(), dx: 0, dy: 0, on: false } : null;
+  }, { passive: true });
+  document.addEventListener("touchmove", (e) => {
+    if (!g) return;
+    const tch = e.touches[0];
+    g.dx = tch.clientX - g.x; g.dy = tch.clientY - g.y;
+    if (!g.on) {
+      if (g.kind === "back" && g.dx > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.2) g.on = true;
+      else if ((g.kind === "down" || g.kind === "pull") && g.dy > 12 && Math.abs(g.dy) > Math.abs(g.dx) * 1.2) g.on = true;
+      else if (Math.abs(g.dx) > 20 || Math.abs(g.dy) > 20) { g = null; return; }
+    }
+    if (!g.on) return;
+    e.preventDefault();
+    g.sh.style.transition = "none";
+    const k = g.kind === "pull" ? 0.55 : 1;   // pulling the list feels heavier
+    g.sh.style.transform = g.kind === "back" ? "translateX(" + Math.max(0, g.dx) + "px)" : "translateY(" + Math.max(0, g.dy * k) + "px)";
+    if (g.kind === "pull") {
+      // hold past the line for a moment to arm closing; the window dims when armed
+      const over = g.dy > 200;
+      if (over && !g.timer && !g.armed) { const gg = g; g.timer = setTimeout(() => { gg.armed = true; }, 300); }
+      if (!over) { clearTimeout(g.timer); g.timer = null; g.armed = false; g.sh.style.opacity = ""; }
+    }
+  }, { passive: false });
+  const gEnd = () => {
+    if (!g) return;
+    const { sh, kind, dx, dy, on, armed, timer } = g; g = null;
+    clearTimeout(timer); sh.style.opacity = "";
+    sh.style.transition = "transform .18s ease";
+    // pulling the list closes only after holding past the line, so a quick flick while scrolling never closes the window
+    const PULL_HOLD = false;   // test: no hold needed when pulling the list
+    const done = on && (kind === "back" ? dx > 90 : kind === "down" ? dy > 110 : (PULL_HOLD ? armed : dy > 160));
+    if (done) {
+      sh.style.transform = kind === "back" ? "translateX(100%)" : "translateY(100%)";
+      setTimeout(() => { sh.style.transition = "none"; sh.style.transform = ""; kind === "back" ? sheetBack(sh) : sheetClose(sh); }, 160);
+    } else sh.style.transform = "";
+  };
+  document.addEventListener("touchend", gEnd);
+  document.addEventListener("touchcancel", gEnd);
+
+  $("home-btn").onclick = () => {
+    $("q").value = ""; cur = []; showMissing = false; over = {};
+    endMode(); mvClose(); addView(null);
+    if (!$("sheet-bg").hidden) closeSheet();
+    const dbg = document.getElementById("data-bg"); if (dbg) dbg.hidden = true;
+    setStatus(""); render(); window.scrollTo(0, 0);
+  };
   $("q").addEventListener("input", () => { over = {}; render(); });
   // ---------- add chooser: item / bag / place ----------
   function addView(v) {
     $("add-choose").hidden = v !== "choose"; $("add-place-form").hidden = v !== "place"; $("add-bag-form").hidden = v !== "bag";
     $("add-bg").hidden = !v;
   }
-  function openAddPlace() { $("ap-name").value = ""; $("ap-err").hidden = true; addView("place"); setTimeout(() => $("ap-name").focus(), 50); }
+  let addPrefill = "";
+  function openChooser(prefill) {
+    addPrefill = (prefill || "").trim();
+    $("add-title").textContent = addPrefill ? "Что такое «" + addPrefill + "»?" : "Что добавить?";
+    addView("choose");
+  }
+  function openAddPlace() { $("ap-name").value = addPrefill.replace(/\//g, " "); $("ap-err").hidden = true; addView("place"); setTimeout(() => $("ap-name").focus(), 50); }
   function openAddBag() {
-    $("ab-name").value = ""; $("ab-err").hidden = true;
+    $("ab-name").value = addPrefill; $("ab-err").hidden = true;
     const vb = bagAt(cur);
     const def = cur.length && !vb ? "place:" + pathStr(cur) : (vb ? "place:" + (vb.location || "") : (places[0] ? "place:" + places[0].name : ""));
     fillWhere($("ab-where"), $("ab-new"), { value: def });
     $("ab-new-wrap").hidden = true;
     addView("bag"); setTimeout(() => $("ab-name").focus(), 50);
   }
-  $("add").onclick = () => addView("choose");
-  $("add-item").onclick = () => { addView(null); openSheet(null); };
+  $("add").onclick = () => openChooser("");
+  $("add-item").onclick = () => { addView(null); openSheet(null); if (addPrefill) $("f-name").value = addPrefill; };
   $("add-bag").onclick = openAddBag;
   $("add-place").onclick = openAddPlace;
   document.querySelectorAll(".add-cancel").forEach(b => b.onclick = () => addView(null));
@@ -865,7 +1322,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       render();
     }, onErr);
     db.collection("bags").orderBy("order").onSnapshot((snap) => {
-      bags = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", location: v.location || "", order: v.order || 0, log: Array.isArray(v.log) ? v.log : [] }; }).filter(b => b.name);
+      bags = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", location: v.location || "", dest: v.dest || null, order: v.order || 0, log: Array.isArray(v.log) ? v.log : [] }; }).filter(b => b.name);
       render();
     }, onErr);
     db.collection("items").onSnapshot((snap) => {
@@ -873,6 +1330,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       loaded = true;
       if (!snap.metadata.fromCache) { clearTimeout(timer); setStatus(""); }
       render();
+      if (mvStep === "items") renderPick();
     }, onErr);
   })();
 })();

@@ -29,6 +29,12 @@
     (data.photos || []).forEach(o => t.objectStore("photos").put(o));
     await done(t);
   }
+  async function replaceData(data) {
+    const d = await dbp;
+    const t = d.transaction(DATA, "readwrite");
+    DATA.forEach(s => { t.objectStore(s).clear(); (data[s] || []).forEach(o => { if (o && o.id) t.objectStore(s).put(o); }); });
+    await done(t);
+  }
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
   // photos → object URLs
@@ -58,8 +64,8 @@
           const docId = id || uid();
           return {
             id: docId,
-            async set(d) { await put(name, Object.assign({}, d, { id: docId })); await emit(name); },
-            async delete() { await del(name, docId); await emit(name); }
+            async set(d) { await put(name, Object.assign({}, d, { id: docId, _t: Date.now() })); await emit(name); syncSoon(); },
+            async delete() { await del(name, docId); await emit(name); syncSoon(); }
           };
         }
       };
@@ -70,6 +76,8 @@
     async upload(blob) { const id = uid(); await put("photos", { id, blob, type: blob.type || "image/jpeg" }); urls.set(id, URL.createObjectURL(blob)); return { id, url: urls.get(id) }; },
     async delete(id) { await del("photos", id); const u = urls.get(id); if (u) URL.revokeObjectURL(u); urls.delete(id); }
   };
+  window.__kolchan = { all, get, put, replaceData, emit };
+  function syncSoon() { if (window.__syncSoon) window.__syncSoon(); }
   window.claude = { use: async (n) => { await ready; return n === "db" ? db : n === "assets" ? assets : null; } };
 
   // ---------- data sheet: export / import ----------
@@ -125,5 +133,131 @@
       location.reload();
     };
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+})();
+
+
+// ---------- sync with a private GitHub repo (data.json) ----------
+(function () {
+  "use strict";
+  const DATA = ["places", "bags", "items"];
+  const $ = (id) => document.getElementById(id);
+  const K = window.__kolchan;
+  const fmt = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+  const stamp = (r) => Math.max(r._t || 0, r.updatedAt || 0, ...((r.log || []).map(x => x.t || 0)));
+  function mergeLog(a, b) {
+    const m = new Map();
+    [...(a || []), ...(b || [])].forEach(x => m.set([x.t, x.kind || "", x.to || "", x.from || "", x.note || ""].join("|"), x));
+    return [...m.values()].sort((x, y) => (x.t || 0) - (y.t || 0)).slice(-80);
+  }
+  function mergeRec(l, r) {
+    const out = Object.assign({}, stamp(l) >= stamp(r) ? l : r);
+    if (l.log || r.log) out.log = mergeLog(l.log, r.log);
+    return out;
+  }
+  // three-way merge: base = ids that existed at the last successful sync (to tell "deleted" from "new")
+  function merge(local, remote, base) {
+    const out = {};
+    DATA.forEach(c => {
+      const L = new Map((local[c] || []).map(r => [r.id, r]));
+      const R = new Map((remote[c] || []).map(r => [r.id, r]));
+      const B = new Set((base && base[c]) || []);
+      const ids = new Set([...L.keys(), ...R.keys()]);
+      out[c] = [];
+      ids.forEach(id => {
+        const l = L.get(id), r = R.get(id);
+        if (l && r) out[c].push(mergeRec(l, r));
+        else if (l && !(B.has(id))) out[c].push(l);          // new here
+        else if (r && !(B.has(id))) out[c].push(r);          // new there
+        // in base but missing on one side = deleted there → drop
+      });
+    });
+    return out;
+  }
+  function serialize(d) {
+    const order = { places: (a, b) => (a.order || 0) - (b.order || 0), bags: (a, b) => (a.order || 0) - (b.order || 0), items: (a, b) => a.id < b.id ? -1 : 1 };
+    const keySort = (o) => JSON.stringify(Object.keys(o).sort().reduce((m, k) => (m[k] = o[k], m), {}));
+    const lines = ["{", '"app": "kolchan", "version": 1, "exportedAt": ' + Date.now() + ","];
+    DATA.forEach(c => { lines.push('"' + c + '": ['); lines.push(d[c].slice().sort(order[c]).map(keySort).join(",\n")); lines.push("],"); });
+    lines.push('"photos": []', "}");
+    return lines.join("\n") + "\n";
+  }
+  const canon = (arr) => (arr || []).map(o => JSON.stringify(Object.keys(o).sort().reduce((m, k) => (m[k] = o[k], m), {}))).sort().join("\n");
+  const sameData = (a, b) => DATA.every(c => canon(a[c]) === canon(b[c]));
+  const b64enc = (str) => { const bytes = new TextEncoder().encode(str); let bin = ""; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); };
+  const b64dec = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, "")), ch => ch.charCodeAt(0)));
+
+  async function gh(cfg, method, body) {
+    const url = "https://api.github.com/repos/" + cfg.repo + "/contents/data.json";
+    const r = await fetch(url + (method === "GET" ? "?ref=main&t=" + Date.now() : ""), {
+      method, headers: { Authorization: "Bearer " + cfg.token, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+      body: body ? JSON.stringify(body) : undefined, cache: "no-store"
+    });
+    if (r.status === 404 && method === "GET") return null;
+    if (!r.ok) { const e = new Error("http " + r.status); e.status = r.status; throw e; }
+    return r.json();
+  }
+  async function pull(cfg) {
+    const j = await gh(cfg, "GET");
+    if (!j) return { data: { places: [], bags: [], items: [] }, sha: null };
+    let text = j.content ? b64dec(j.content) : "";
+    if (!text && j.download_url) text = await (await fetch(j.download_url, { headers: { Authorization: "Bearer " + cfg.token } })).text();
+    return { data: JSON.parse(text), sha: j.sha };
+  }
+
+  let running = null, timer = null;
+  function setState(text, bad) { const el = $("s-state"); if (el) { el.textContent = text; el.className = bad ? "err" : "note"; } const b = $("data-open"); if (b) b.textContent = bad ? "Данные ⚠" : "Данные"; }
+  async function cfgGet() { return (await K.get("meta", "sync")) || null; }
+
+  async function syncNow(manual) {
+    if (running) return running;
+    running = (async () => {
+      const cfg = await cfgGet();
+      if (!cfg || !cfg.token) { if (manual) setState("Сначала вставь токен GitHub.", true); return; }
+      if (!navigator.onLine) { setState("Нет интернета — синхронизирую, когда появится."); return; }
+      setState("Синхронизирую…");
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const local = { places: await K.all("places"), bags: await K.all("bags"), items: await K.all("items") };
+          const remote = await pull(cfg);
+          const base = (await K.get("meta", "syncBase")) || null;
+          const merged = merge(local, remote.data, base && base.ids);
+          if (!sameData(merged, remote.data)) {
+            await gh(cfg, "PUT", { message: "Синхронизация с телефона " + new Date().toLocaleString("ru-RU"), content: b64enc(serialize(merged)), sha: remote.sha || undefined, branch: "main" });
+          }
+          if (!sameData(merged, local)) { await K.replaceData(merged); await Promise.all(DATA.map(K.emit)); }
+          const t = Date.now();
+          await K.put("meta", { key: "syncBase", t, ids: Object.fromEntries(DATA.map(c => [c, merged[c].map(r => r.id)])) });
+          setState("Синхронизировано: " + fmt.format(new Date(t)));
+          return;
+        } catch (e) {
+          if ((e.status === 409 || e.status === 422) && attempt === 0) continue;   // someone wrote in between: pull again and retry
+          setState(e.status === 401 ? "Токен не подходит или истёк. Вставь новый." : e.status === 404 || e.status === 403 ? "Нет доступа к репозиторию. Проверь название и права токена." : "Не получилось синхронизировать. Попробую позже.", true);
+          return;
+        }
+      }
+    })();
+    try { await running; } finally { running = null; }
+  }
+  window.__syncSoon = () => { clearTimeout(timer); timer = setTimeout(() => syncNow(false), 8000); };
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    const cfg = await cfgGet();
+    if ($("s-repo")) $("s-repo").value = (cfg && cfg.repo) || "ducktail1/kolchan-data";
+    if ($("s-token") && cfg && cfg.token) $("s-token").placeholder = "токен сохранён";
+    const base = await K.get("meta", "syncBase");
+    setState(cfg && cfg.token ? (base ? "Синхронизировано: " + fmt.format(new Date(base.t)) : "Ещё не синхронизировалось.") : "Синхронизация выключена: нет токена.");
+    if ($("s-save")) $("s-save").onclick = async () => {
+      const token = $("s-token").value.trim() || (cfg && cfg.token) || "";
+      const repo = $("s-repo").value.trim() || "ducktail1/kolchan-data";
+      await K.put("meta", { key: "sync", token, repo });
+      $("s-token").value = ""; $("s-token").placeholder = token ? "токен сохранён" : "github_pat_…";
+      syncNow(true);
+    };
+    if ($("s-now")) $("s-now").onclick = () => syncNow(true);
+    syncNow(false);
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") syncNow(false); });
+    window.addEventListener("online", () => syncNow(false));
   });
 })();

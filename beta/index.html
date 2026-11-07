@@ -478,7 +478,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <h2>Данные</h2>
     <div class="note" id="d-stat"></div>
     <div class="note" id="d-last"></div>
-    <div class="note">Версия Колчана: <b>1.5.0-beta.4</b></div>
+    <div class="note">Версия Колчана: <b>1.5.0-beta.5</b></div>
     <div class="dataBtns">
       <button type="button" class="primary" id="d-export">Выгрузить файл</button>
       <label>Загрузить файл <span class="hint">заменит всю базу на этом телефоне</span>
@@ -506,7 +506,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="actions"><div class="right"><button type="button" id="d-close">Закрыть</button></div></div>
   </div>
 </div>
-<script>window.__KOLCHAN_VERSION = "1.5.0-beta.4";</script>
+<script>window.__KOLCHAN_VERSION = "1.5.0-beta.5";</script>
 <script>window.__KOLCHAN_AVA = true;</script>
 <script src="local.js"></script>
 <script src="friends.js"></script>
@@ -1676,7 +1676,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     if (e.touches.length !== 1) { g = null; return; }
     const bgEl = e.target.classList && e.target.classList.contains("sheet-bg") ? e.target : null;
     const sh = e.target.closest(".sheet") || (bgEl ? bgEl.querySelector(".sheet:not([hidden])") : null);
-    if (!sh || sh.closest("[hidden]") || sh.classList.contains("drawer")) { g = null; return; }
+    if (!sh || sh.closest("[hidden]") || sh.classList.contains("drawer") || sh.closest(".gate")) { g = null; return; }
     const tch = e.touches[0];
     const h2 = sh.querySelector("h2");
     const headBottom = h2 ? h2.getBoundingClientRect().bottom + 10 : sh.getBoundingClientRect().top + 64;

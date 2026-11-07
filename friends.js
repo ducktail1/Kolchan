@@ -150,7 +150,7 @@ details.sync > *:not(summary) { margin-top: 8px; }
       how.onclick = window.__showInstall; wel.appendChild(how);
       const dSheet = $("data-bg") && $("data-bg").querySelector(".dataBtns");
       if (dSheet) { const b2 = document.createElement("button"); b2.type = "button"; b2.textContent = "Как поставить на экран «Домой»"; b2.onclick = () => { $("data-bg").hidden = true; window.__showInstall(); }; dSheet.appendChild(b2); }
-      if (window.__KOLCHAN_PREVIEW || !lsGet("kolchan.installSeen")) setTimeout(window.__showInstall, 400);
+      if (!window.__KOLCHAN_SEED && (window.__KOLCHAN_PREVIEW || !lsGet("kolchan.installSeen"))) setTimeout(window.__showInstall, 400);
     }
 
     // data from the store
@@ -170,7 +170,7 @@ details.sync > *:not(summary) { margin-top: 8px; }
         const now = Date.now();
         show = !(sync && sync.token) && real >= 5 && (!last || now - last.t > 7 * DAY) && !(snooze && snooze.until > now);
       } catch (e) {}
-      rem.hidden = !show || !!window.__kolchanMemory;
+      rem.hidden = !show || !!window.__kolchanMemory || !!window.__KOLCHAN_SEED;
       membar.hidden = !window.__kolchanMemory;
     }
     ["places", "bags", "items"].forEach(c => db.collection(c).onSnapshot((s) => { state[c] = s.docs.map(d => Object.assign({ id: d.id }, d.data())); refresh(); }));

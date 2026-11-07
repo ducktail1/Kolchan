@@ -96,6 +96,7 @@ button.link { border: 0; background: none; padding: 4px 2px; color: var(--accent
 .crumbs button { border: 0; background: none; padding: 4px 6px; color: var(--accent); font-family: inherit; border-radius: 6px; }
 .crumbs button[aria-current="true"] { color: var(--ink); font-weight: 500; cursor: default; }
 .crumbs .sep { color: var(--muted); }
+.crumbs .rn { color: var(--muted); padding: 4px; display: inline-grid; place-items: center; }
 .group { display: flex; flex-direction: column; gap: 8px; }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; }
 .chip { font-family: var(--font-mono); font-size: 13px; padding: 7px 10px; border-radius: 8px; display: inline-flex; gap: 6px; align-items: center; }
@@ -109,6 +110,7 @@ button.link { border: 0; background: none; padding: 4px 2px; color: var(--accent
 .panel .where b { color: var(--ink); font-family: var(--font-mono); font-weight: 500; }
 .panel .btns { display: flex; gap: 8px; flex-wrap: wrap; }
 .panel .btns button { background: var(--surface); }
+.addrow { width: 100%; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; color: var(--accent); font-weight: 600; padding: 14px; text-align: left; }
 .notice { font-size: 14px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); }
 .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .choose { display: flex; flex-direction: column; gap: 10px; }
@@ -184,12 +186,32 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 .hist div.ok::before { background: var(--accent); }
 .hist time { display: block; font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: no-preference) { .sheet { animation: up .18s ease-out; } @keyframes up { from { transform: translateY(16px); opacity: .6; } } }
+/* quivers: burger + left drawer */
+.burger { border: 0; background: none; padding: 6px; margin-left: -6px; color: var(--ink); display: grid; place-items: center; border-radius: 10px; }
+.burger + .home { margin-left: -4px; }
+.tt { display: flex; flex-direction: column; min-width: 0; }
+.qname { font-size: 13px; color: var(--muted); line-height: 1.2; overflow-wrap: anywhere; }
+.sheet-bg.drawer-bg { justify-content: flex-start; align-items: stretch !important; }
+.sheet.drawer { width: 84%; max-width: 330px; max-height: none; height: 100%; border-radius: 0 18px 18px 0 !important; padding-top: calc(env(safe-area-inset-top, 0px) + 18px); }
+@media (prefers-reduced-motion: no-preference) { .sheet.drawer { animation: slidein .2s ease-out; } @keyframes slidein { from { transform: translateX(-100%); } } }
+.qlist { display: flex; flex-direction: column; gap: 4px; }
+.qrow { display: flex; align-items: center; gap: 6px; }
+.qbtn { flex: 1; min-width: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid transparent; background: none; color: var(--ink); text-align: left; font-size: 16px; }
+.qbtn.on { background: var(--surface); border-color: var(--line); font-weight: 600; }
+.qbtn .n { color: var(--muted); font-weight: 400; font-size: 14px; font-variant-numeric: tabular-nums; flex: none; }
+.qbtn .t { overflow-wrap: anywhere; }
+.qedit { border: 0; background: none; color: var(--muted); padding: 8px; border-radius: 10px; display: grid; place-items: center; }
+.qform { display: flex; flex-direction: column; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.qform .row2 > button { padding: 10px 12px; }
+#qv-add { display: flex; gap: 8px; }
+#qm-bg, #rn-bg { z-index: 25; }
+#qv-add input { flex: 1; min-width: 0; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div class="ttl"><button type="button" class="home" id="home-btn" aria-label="На главную" title="На главную"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg></button><h1>Колчан</h1></div>
+    <div class="ttl"><button type="button" class="burger" id="qv-open" aria-label="Колчаны" title="Колчаны"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><button type="button" class="home" id="home-btn" aria-label="На главную" title="На главную"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg></button><div class="tt"><h1>Колчан</h1><span class="qname" id="q-cur" hidden></span></div></div>
     <div class="hdr-right"><div class="count" id="count">Загружаю базу…</div><button type="button" class="link" id="data-open">Данные</button></div>
   </header>
   <div class="search">
@@ -226,6 +248,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="btns" id="bag-btns">
       <button type="button" id="bag-move">Перевезти сумку</button>
       <button type="button" id="bag-check">Сверить содержимое</button>
+      <button type="button" id="bag-qmove" hidden>В другой колчан</button>
       <button type="button" id="bag-unpack">Выложить всё</button>
     </div>
     <div class="search" id="bag-move-form" hidden>
@@ -352,6 +375,53 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   </form>
 </div>
 
+<div class="sheet-bg drawer-bg" id="qv-bg" hidden>
+  <div class="sheet drawer" id="qv">
+    <h2>Колчаны</h2>
+    <div class="qlist" id="qv-list"></div>
+    <form id="qv-add" novalidate>
+      <input id="qv-name" placeholder="Новый колчан" autocomplete="off">
+      <button type="submit" class="primary">Добавить</button>
+    </form>
+    <div class="note">Каждый колчан — свой список мест, сумок и вещей. Вещь можно перенести в другой колчан из её карточки.</div>
+  </div>
+</div>
+
+<div class="sheet-bg" id="rn-bg" hidden>
+  <form class="sheet" id="rn-form" novalidate>
+    <h2>Переименовать место</h2>
+    <div class="note" id="rn-what"></div>
+    <label>Новое название
+      <input id="rn-name" autocomplete="off">
+    </label>
+    <div class="note">Название поменяется у всех вещей и сумок в этом месте. История перемещений останется как была.</div>
+    <div class="err" id="rn-err" hidden></div>
+    <div class="confirm" id="rn-confirm" hidden>
+      <span id="rn-confirm-text"></span>
+      <div class="row2"><button type="button" id="rn-confirm-no">Отмена</button><button type="button" class="primary" id="rn-confirm-yes">Объединить</button></div>
+    </div>
+    <div class="actions"><div class="right"><button type="button" id="rn-cancel">Отмена</button><button type="submit" class="primary" id="rn-save">Сохранить</button></div></div>
+  </form>
+</div>
+
+<div class="sheet-bg" id="qm-bg" hidden>
+  <form class="sheet" id="qm-form" novalidate>
+    <h2>Перенести в другой колчан</h2>
+    <div class="note" id="qm-what"></div>
+    <label>Колчан
+      <select id="qm-q"></select>
+    </label>
+    <label>Где лежит
+      <select id="qm-where"></select>
+    </label>
+    <label id="qm-new-wrap" hidden>Новое место хранения
+      <input id="qm-new" placeholder="Например, Гараж" autocomplete="off">
+    </label>
+    <div class="err" id="qm-err" hidden></div>
+    <div class="actions"><div class="right"><button type="button" id="qm-cancel">Отмена</button><button type="submit" class="primary" id="qm-save">Перенести</button></div></div>
+  </form>
+</div>
+
 <div class="sheet-bg" id="sheet-bg" hidden>
   <form class="sheet" id="form" novalidate>
     <h2 id="f-title">Новая вещь</h2>
@@ -387,6 +457,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       <h3>История</h3>
       <div class="hist" id="f-hist"></div>
     </div>
+    <button type="button" class="link" id="f-qmove" hidden>Перенести в другой колчан…</button>
     <div class="err" id="f-err" hidden></div>
     <div class="confirm" id="f-confirm" hidden>
       <span>Удалить эту вещь из базы? Это нельзя отменить.</span>
@@ -407,7 +478,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <h2>Данные</h2>
     <div class="note" id="d-stat"></div>
     <div class="note" id="d-last"></div>
-    <div class="note">Версия Колчана: <b>1.3.0</b></div>
+    <div class="note">Версия Колчана: <b>1.4.0</b></div>
     <div class="dataBtns">
       <button type="button" class="primary" id="d-export">Выгрузить файл</button>
       <label>Загрузить файл <span class="hint">заменит всю базу на этом телефоне</span>
@@ -435,7 +506,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="actions"><div class="right"><button type="button" id="d-close">Закрыть</button></div></div>
   </div>
 </div>
-<script>window.__KOLCHAN_VERSION = "1.3.0";</script>
+<script>window.__KOLCHAN_VERSION = "1.4.0";</script>
 <script src="local.js"></script>
 <script src="friends.js"></script>
 
@@ -444,10 +515,31 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   const $ = (id) => document.getElementById(id);
   let db = null, assets = null;
   let places = [], bags = [], items = [], cur = [], loaded = false;
+  // quivers: every record carries q (no q = the first, "main" quiver); the page shows one quiver at a time
+  let rawPlaces = [], rawBags = [], rawItems = [], quivers = [];
+  const MAINQ = "main", MAIN_NAME = "Основной";
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+  let curQ = lsGet("kolchan.q") || MAINQ;
+  const QOF = (r) => r.q || MAINQ;
   let mode = null, sel = new Set(), showMissing = false;
   const photoSrc = (id) => (window.__photoSrc ? window.__photoSrc(id) : "/_blob/" + id);
   // Collapsible sections: closed by default on the start screen, open when searching or inside a place
   let over = {}, lastOpen = {};
+  // every level (root, a place, a bag) remembers which lists were open and where it was scrolled,
+  // so coming back up shows it the way it was left; going deeper starts fresh
+  let levelMem = {};
+  const levelKey = () => (showMissing ? "!" : "") + cur.join("\u0001");
+  function goTo(nc, miss) {
+    levelMem[levelKey()] = { over: Object.assign({}, over), y: window.scrollY };
+    const wasDepth = cur.length + (showMissing ? 1 : 0);
+    cur = nc; showMissing = !!miss;
+    const up = cur.length + (showMissing ? 1 : 0) < wasDepth;
+    const m = up ? levelMem[levelKey()] : null;
+    over = m ? Object.assign({}, m.over) : {};
+    endMode(); render();
+    window.scrollTo(0, m ? m.y : 0);
+  }
   ["tr", "bags", "places", "items"].forEach(k => { const b = document.getElementById("sec-" + k); if (b) b.onclick = () => { over[k] = !lastOpen[k]; render(); }; });
   let editing = null, photoState = null;
 
@@ -458,6 +550,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   const LOG_MAX = 80;
   const addLog = (log, e) => (Array.isArray(log) ? log : []).concat(e).slice(-LOG_MAX);
 
+  // after something new is added, the search box starts empty again
+  function clearQ() { if ($("q").value) { $("q").value = ""; over = {}; render(); } }
   function setStatus(msg) { const s = $("status"); s.textContent = msg || ""; s.hidden = !msg; }
   function plural(n, f) { const a = n % 10, b = n % 100; return f[(a === 1 && b !== 11) ? 0 : (a >= 2 && a <= 4 && (b < 12 || b > 14)) ? 1 : 2]; }
   const bagMap = () => Object.fromEntries(bags.map(b => [b.id, b]));
@@ -521,6 +615,341 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     await db.collection("places").doc().set({ name: top, order });
   }
 
+  // ---------- quivers ----------
+  // Wrap the store so every write lands in the right quiver: an existing record keeps its quiver,
+  // a new one goes to the open quiver; an explicit q moves it ("main" is stored as no q).
+  function quiverDb(real) {
+    const rawOf = { places: () => rawPlaces, bags: () => rawBags, items: () => rawItems };
+    return {
+      collection(c) {
+        const rc = real.collection(c);
+        return {
+          orderBy(f) { return rc.orderBy(f); },
+          onSnapshot(cb, onErr) { return rc.onSnapshot(cb, onErr); },
+          doc(id) {
+            const rd = id === undefined ? rc.doc() : rc.doc(id);
+            return {
+              set(d) {
+                let out = d;
+                if (rawOf[c]) {
+                  out = Object.assign({}, d);
+                  if (!("q" in out)) { const prev = id !== undefined ? rawOf[c]().find(x => x.id === id) : null; out.q = prev ? prev.q : curQ; }
+                  if (!out.q || out.q === MAINQ) delete out.q;
+                }
+                return rd.set(out);
+              },
+              delete() { return rd.delete(); }
+            };
+          }
+        };
+      }
+    };
+  }
+  function qList() {
+    const list = quivers.map(x => ({ id: x.id, name: x.name, order: x.order }));
+    if (!list.some(x => x.id === MAINQ)) list.push({ id: MAINQ, name: MAIN_NAME, order: -1 });
+    // a quiver used by records but missing from the list (e.g. lost in an old sync) still shows up
+    [rawPlaces, rawBags, rawItems].forEach(arr => arr.forEach(r => { const q = QOF(r); if (!list.some(x => x.id === q)) list.push({ id: q, name: "Колчан", order: 1e6 }); }));
+    return list.sort((a, b) => (a.order || 0) - (b.order || 0));
+  }
+  const qName = (id) => { const x = qList().find(y => y.id === id); return x ? x.name : MAIN_NAME; };
+  function applyQ() {
+    if (!qList().some(x => x.id === curQ)) curQ = MAINQ;
+    places = rawPlaces.filter(r => QOF(r) === curQ);
+    bags = rawBags.filter(r => QOF(r) === curQ);
+    items = rawItems.filter(r => QOF(r) === curQ);
+    const ql = qList(), el = $("q-cur");
+    el.textContent = qName(curQ);
+    el.hidden = ql.length < 2 && qName(curQ) === MAIN_NAME;
+    if (!$("qv-bg").hidden) renderQv();
+  }
+  function switchQ(id) {
+    curQ = id; lsSet("kolchan.q", id);
+    $("q").value = ""; cur = []; showMissing = false; over = {}; levelMem = {};
+    applyQ(); render(); window.scrollTo(0, 0);
+  }
+  let qvEdit = null;
+  const pencil = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>';
+  function renderQv() {
+    const box = $("qv-list"); box.textContent = "";
+    qList().forEach(x => {
+      const n = rawItems.filter(r => QOF(r) === x.id).length;
+      if (qvEdit === x.id) {
+        const f = document.createElement("form"); f.className = "qform"; f.noValidate = true;
+        const inp = document.createElement("input"); inp.value = x.name; inp.autocomplete = "off"; inp.setAttribute("aria-label", "Название колчана");
+        const row = document.createElement("div"); row.className = "row2";
+        const empty = x.id !== MAINQ && ![rawPlaces, rawBags, rawItems].some(a => a.some(r => QOF(r) === x.id && !(a === rawPlaces && (r.name === "С собой" || r.name === "В пути"))));
+        const del = document.createElement("button"); del.type = "button"; del.className = "danger"; del.textContent = "Удалить"; del.hidden = !empty;
+        const cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = "Отмена";
+        const save = document.createElement("button"); save.type = "submit"; save.className = "primary"; save.textContent = "Сохранить";
+        row.append(del, cancel, save); f.append(inp, row);
+        if (x.id !== MAINQ && !empty) { const nt = document.createElement("div"); nt.className = "note"; nt.textContent = "Удалить можно только пустой колчан."; f.appendChild(nt); }
+        cancel.onclick = () => { qvEdit = null; renderQv(); };
+        del.onclick = async () => {
+          for (const r of rawPlaces.filter(r => QOF(r) === x.id)) await db.collection("places").doc(r.id).delete();
+          await db.collection("quivers").doc(x.id).delete();
+          qvEdit = null; if (curQ === x.id) switchQ(MAINQ); else renderQv();
+        };
+        f.addEventListener("submit", async (e) => {
+          e.preventDefault(); const nm = inp.value.replace(/\s+/g, " ").trim(); if (!nm) { inp.focus(); return; }
+          await db.collection("quivers").doc(x.id).set({ name: nm, order: x.order < 0 ? 0 : x.order || 0 });
+          qvEdit = null; renderQv(); applyQ();
+        });
+        box.appendChild(f); setTimeout(() => inp.focus(), 30);
+        return;
+      }
+      const row = document.createElement("div"); row.className = "qrow";
+      const b = document.createElement("button"); b.type = "button"; b.className = "qbtn" + (x.id === curQ ? " on" : "");
+      const t = document.createElement("span"); t.className = "t"; t.textContent = x.name;
+      const c = document.createElement("span"); c.className = "n"; c.textContent = n;
+      b.append(t, c);
+      b.onclick = () => { $("qv-bg").hidden = true; if (x.id !== curQ) switchQ(x.id); };
+      const ed = document.createElement("button"); ed.type = "button"; ed.className = "qedit"; ed.innerHTML = pencil; ed.setAttribute("aria-label", "Переименовать «" + x.name + "»");
+      ed.onclick = () => { qvEdit = x.id; renderQv(); };
+      row.append(b, ed); box.appendChild(row);
+    });
+  }
+  function openQv() { qvEdit = null; renderQv(); $("qv-bg").hidden = false; }
+  $("qv-open").onclick = openQv;
+  $("qv-bg").addEventListener("click", (e) => { if (e.target === $("qv-bg")) $("qv-bg").hidden = true; });
+  $("qv-add").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nm = $("qv-name").value.replace(/\s+/g, " ").trim(); if (!nm) { $("qv-name").focus(); return; }
+    if (qList().some(x => low(x.name) === low(nm))) { $("qv-name").select(); return; }
+    const id = "q" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const order = qList().reduce((m, x) => Math.max(m, x.order || 0), 0) + 10;
+    await db.collection("quivers").doc(id).set({ name: nm, order });
+    // every quiver starts with the two service places, like the first one
+    await db.collection("places").doc().set({ name: "С собой", order: 1, q: id });
+    await db.collection("places").doc().set({ name: "В пути", order: 2, q: id });
+    $("qv-name").value = ""; $("qv-bg").hidden = true; switchQ(id);
+  });
+  // Main screen swipes (no window open): inside a place, swipe left→right = one level up;
+  // at the top level, the same swipe opens the quivers menu. Swipe right→left closes the menu.
+  // The page follows the finger 1:1; on release it slides out, the level above slides in.
+  (function () {
+    let s = null, raf = 0;
+    const wrap = document.querySelector(".wrap");
+    const anySheet = () => [...document.querySelectorAll(".sheet-bg")].some(x => !x.hidden);
+    // move the page content, not .wrap itself: a transform on .wrap would drag the fixed buttons along
+    const parts = () => [...wrap.children].filter(el => !el.hidden && getComputedStyle(el).position !== "fixed");
+    const paint = (els, x, op, tr) => els.forEach(el => { el.style.transition = tr || "none"; el.style.transform = x ? "translate3d(" + x + "px,0,0)" : ""; el.style.opacity = op === 1 ? "" : String(op); });
+    const clear = (els) => els.forEach(el => { el.style.transition = ""; el.style.transform = ""; el.style.opacity = ""; el.style.willChange = ""; });
+    const goUp = () => { if (showMissing) goTo(cur, false); else goTo(cur.slice(0, -1)); };
+    document.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 1) { s = null; return; }
+      const t = e.touches[0];
+      if (!$("qv-bg").hidden) { s = { k: "close", x: t.clientX, y: t.clientY }; return; }
+      if (anySheet() || e.target.closest("input, textarea, select")) { s = null; return; }
+      const inside = cur.length || showMissing;
+      s = inside ? { k: "up", x: t.clientX, y: t.clientY, on: false, dx: 0 } : { k: "open", x: t.clientX, y: t.clientY };
+    }, { passive: true });
+    document.addEventListener("touchmove", (e) => {
+      if (!s || s.k !== "up") return;
+      const t = e.touches[0], dx = t.clientX - s.x, dy = t.clientY - s.y;
+      if (!s.on) {
+        if (dx > 10 && Math.abs(dx) > Math.abs(dy) * 1.5) { s.on = true; s.x = t.clientX - 1; s.els = parts(); s.els.forEach(el => { el.style.willChange = "transform"; }); }
+        else if (Math.abs(dy) > 10 || dx < -10) { s = null; return; }
+        else return;
+      }
+      e.preventDefault();   // no vertical scrolling while dragging sideways
+      s.dx = Math.max(0, t.clientX - s.x);
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; if (s && s.on) paint(s.els, s.dx, 1 - Math.min(0.35, s.dx / 900)); });
+    }, { passive: false });
+    document.addEventListener("touchend", (e) => {
+      if (!s) return;
+      const t = e.changedTouches[0], dx = t.clientX - s.x, dy = t.clientY - s.y, st = s; s = null;
+      const horiz = Math.abs(dx) > Math.abs(dy) * 1.5;
+      if (st.k === "close" && dx < -60 && horiz) $("qv-bg").hidden = true;
+      if (st.k === "open" && dx > 80 && horiz) openQv();
+      if (st.k !== "up" || !st.on) return;
+      cancelAnimationFrame(raf); raf = 0;
+      const W = window.innerWidth;
+      if (dx > Math.min(110, W * 0.28)) {
+        // slide out to the right, swap the level, slide the new one in from a little to the left
+        paint(st.els, W, 0.4, "transform .18s cubic-bezier(.2,.7,.3,1), opacity .18s linear");
+        setTimeout(() => {
+          clear(st.els);
+          goUp();
+          const els = parts();
+          paint(els, -36, 0);
+          void wrap.offsetWidth;
+          paint(els, 0, 1, "transform .22s cubic-bezier(.2,.7,.3,1), opacity .22s linear");
+          setTimeout(() => clear(els), 240);
+        }, 180);
+      } else {
+        paint(st.els, 0, 1, "transform .2s cubic-bezier(.2,.7,.3,1), opacity .2s linear");
+        setTimeout(() => clear(st.els), 220);
+      }
+    });
+    document.addEventListener("touchcancel", () => { if (s && s.els) clear(s.els); s = null; });
+  })();
+
+  // ---------- rename a storage place (any level), inside the open quiver ----------
+  let rnPath = null;
+  function openRename(P) {
+    rnPath = P;
+    $("rn-what").textContent = "Сейчас: " + pathStr(P);
+    $("rn-name").value = P[P.length - 1];
+    $("rn-err").hidden = true; $("rn-confirm").hidden = true;
+    $("rn-bg").hidden = false; setTimeout(() => { $("rn-name").focus(); $("rn-name").select(); }, 50);
+  }
+  const closeRename = () => { $("rn-bg").hidden = true; rnPath = null; };
+  $("rn-cancel").onclick = closeRename;
+  $("rn-confirm-no").onclick = () => { $("rn-confirm").hidden = true; };
+  $("rn-bg").addEventListener("click", (e) => { if (e.target === $("rn-bg")) closeRename(); });
+  const under = (parts, P) => P.length <= parts.length && P.every((x, i) => low(parts[i]) === low(x));
+  const swap = (parts, P, NP) => NP.concat(parts.slice(P.length));
+  function rnTarget() {
+    const nm = $("rn-name").value.replace(/\//g, " ").replace(/\s+/g, " ").trim();
+    return nm ? rnPath.slice(0, -1).concat(nm) : null;
+  }
+  async function doRename(P, NP) {
+    const t = Date.now();
+    for (const it of items.filter(i => !i.in && under(i.parts, P))) {
+      const parts = swap(it.parts, P, NP);
+      await db.collection("items").doc(it.id).set({ name: it.name, place: pathStr(parts), parts, in: null, qty: it.qty || "", note: it.note || "", photo: it.photo || null, missing: !!it.missing, updatedAt: t, log: it.log || [] });
+    }
+    for (const b of bags) {
+      const lp = norm(b.location), dp = norm(b.dest || "");
+      const nl = under(lp, P), nd = b.dest && under(dp, P);
+      if (!nl && !nd) continue;
+      await db.collection("bags").doc(b.id).set({ name: b.name, location: nl ? pathStr(swap(lp, P, NP)) : b.location || "", dest: nd ? pathStr(swap(dp, P, NP)) : b.dest || null, order: b.order || 0, log: b.log || [] });
+    }
+    if (P.length === 1) {
+      const old = places.find(p => low(p.name) === low(P[0]));
+      const other = places.find(p => p !== old && low(p.name) === low(NP[0]));
+      if (old && other) await db.collection("places").doc(old.id).delete();
+      else if (old) await db.collection("places").doc(old.id).set({ name: NP[0], order: old.order || 0 });
+    }
+    if (under(cur, P)) cur = swap(cur, P, NP);
+  }
+  $("rn-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const P = rnPath; if (!P) return;
+    const NP = rnTarget();
+    const er = $("rn-err");
+    if (!NP) { er.textContent = "Напиши новое название."; er.hidden = false; return; }
+    if (pathStr(NP) === pathStr(P)) { closeRename(); return; }
+    const sameAsSelf = low(pathStr(NP)) === low(pathStr(P));
+    const exists = !sameAsSelf && (allPlaces().some(x => low(x) === low(pathStr(NP))) || !!bagAt(NP));
+    if (exists && $("rn-confirm").hidden) {
+      if (bagAt(NP)) { er.textContent = "Так называется сумка в этом месте. Выбери другое название."; er.hidden = false; return; }
+      $("rn-confirm-text").textContent = "Место «" + pathStr(NP) + "» уже есть. Объединить: всё из «" + pathStr(P) + "» окажется там?";
+      $("rn-confirm").hidden = false; er.hidden = true; return;
+    }
+    await runRename(P, NP);
+  });
+  $("rn-confirm-yes").onclick = async () => { const P = rnPath, NP = rnTarget(); if (P && NP) await runRename(P, NP); };
+  async function runRename(P, NP) {
+    const btn = $("rn-save"); btn.disabled = true;
+    try { await doRename(P, NP); closeRename(); render(); }
+    catch (ex) { const er = $("rn-err"); er.textContent = "Не получилось переименовать. Попробуй ещё раз."; er.hidden = false; }
+    finally { btn.disabled = false; }
+  }
+
+  // ---------- move an item to another quiver ----------
+  let qmBag = null;   // set when a whole bag moves; otherwise the open item moves
+  function qmFill() {
+    const tq = $("qm-q").value, sel = $("qm-where"); sel.textContent = "";
+    const tb = qmBag ? [] : rawBags.filter(r => QOF(r) === tq), tp = rawPlaces.filter(r => QOF(r) === tq).sort((a, b) => (a.order || 0) - (b.order || 0));
+    const ps = new Set(tp.map(p => p.name));
+    rawItems.filter(r => QOF(r) === tq && !r.in).forEach(it => { for (let i = 1; i <= it.parts.length; i++) ps.add(pathStr(it.parts.slice(0, i))); });
+    const blank = document.createElement("option"); blank.value = ""; blank.textContent = "место не указано"; sel.appendChild(blank);
+    if (tb.length) { const g = document.createElement("optgroup"); g.label = "Сумки"; tb.forEach(b => { const o = document.createElement("option"); o.value = "bag:" + b.id; o.textContent = b.name + " (" + (b.location || "?") + ")"; g.appendChild(o); }); sel.appendChild(g); }
+    const g2 = document.createElement("optgroup"); g2.label = "Места хранения";
+    [...ps].forEach(p => { const o = document.createElement("option"); o.value = "place:" + p; o.textContent = p; g2.appendChild(o); });
+    sel.appendChild(g2);
+    const add = document.createElement("option"); add.value = NEW; add.textContent = "+ Добавить место хранения…"; sel.appendChild(add);
+    const srcPlace = qmBag ? qmBag.location : editing && !editing.in ? editing.place : "";
+    const same = srcPlace && ps.has(srcPlace) ? "place:" + srcPlace : "";
+    sel.value = same;
+    $("qm-new-wrap").hidden = true; $("qm-new").value = "";
+  }
+  $("qm-q").onchange = qmFill;
+  $("qm-where").onchange = () => { const isNew = $("qm-where").value === NEW; $("qm-new-wrap").hidden = !isNew; if (isNew) $("qm-new").focus(); };
+  function qmOpenFor(name) {
+    const sel = $("qm-q"); sel.textContent = "";
+    qList().filter(x => x.id !== curQ).forEach(x => { const o = document.createElement("option"); o.value = x.id; o.textContent = x.name; sel.appendChild(o); });
+    if (!sel.options.length) return false;
+    $("qm-what").textContent = name + " из колчана «" + qName(curQ) + "»";
+    $("qm-err").hidden = true; qmFill(); $("qm-bg").hidden = false;
+    return true;
+  }
+  $("bag-qmove").onclick = () => {
+    const b = bagAt(cur); if (!b) return;
+    qmBag = b;
+    const n = items.filter(i => i.in === b.id).length;
+    $("qm-bg").querySelector("h2").textContent = "Перенести сумку в другой колчан";
+    $("qm-save").textContent = "Перенести";
+    qmOpenFor("Сумка «" + b.name + "»" + (n ? " и всё внутри (" + n + " " + plural(n, ["вещь", "вещи", "вещей"]) + ")" : ""));
+  };
+  $("f-qmove").onclick = () => {
+    if (!editing) return;
+    qmBag = null; $("qm-bg").querySelector("h2").textContent = "Перенести в другой колчан";
+    qmOpenFor("«" + editing.name + "»");
+  };
+  $("qm-cancel").onclick = () => { $("qm-bg").hidden = true; qmBag = null; };
+  $("qm-bg").addEventListener("click", (e) => { if (e.target === $("qm-bg")) { $("qm-bg").hidden = true; qmBag = null; } });
+  async function qmMoveBag(b, tq, place) {
+    const t = Date.now(), from = qName(curQ), to = qName(tq);
+    const note = "из колчана «" + from + "» в «" + to + "»";
+    const keepDest = place === TRANSIT && b.dest;
+    await db.collection("bags").doc(b.id).set({ name: b.name, location: place, dest: keepDest ? b.dest : null, order: b.order || 0, q: tq,
+      log: addLog(b.log, { t, from: b.location || "", to: place, note }) });
+    let i = 1;
+    for (const it of rawItems.filter(x => x.in === b.id)) {
+      await db.collection("items").doc(it.id).set({ name: it.name, place: it.place || "", parts: it.parts || [], in: b.id, qty: it.qty || "", note: it.note || "", photo: it.photo || null, missing: !!it.missing, updatedAt: t + i, q: tq,
+        log: addLog(it.log, { t: t + i, kind: "move", to: "в «" + b.name + "» (" + place + ")", in: b.id, note: "вместе с сумкой: " + note }) });
+      i++;
+    }
+  }
+  $("qm-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (qmBag) {
+      const b = qmBag, tq = $("qm-q").value, v = $("qm-where").value;
+      let place = "";
+      if (v === NEW) { place = pathStr(norm($("qm-new").value)); if (!place) { const er = $("qm-err"); er.textContent = "Напиши название нового места хранения."; er.hidden = false; $("qm-new").focus(); return; } }
+      else if (v.startsWith("place:")) place = v.slice(6);
+      const btn = $("qm-save"); btn.disabled = true;
+      try {
+        const top = norm(place)[0];
+        if (top && !rawPlaces.some(p => QOF(p) === tq && low(p.name) === low(top))) {
+          const order = rawPlaces.filter(p => QOF(p) === tq).reduce((m, p) => Math.max(m, p.order || 0), 0) + 10;
+          await db.collection("places").doc().set({ name: top, order, q: tq });
+        }
+        await qmMoveBag(b, tq, place);
+        $("qm-bg").hidden = true; qmBag = null;
+        goTo(cur.slice(0, -1));
+      } catch (ex) { const er = $("qm-err"); er.textContent = "Не получилось перенести. Попробуй ещё раз."; er.hidden = false; }
+      finally { btn.disabled = false; }
+      return;
+    }
+    const it = editing; if (!it) return;
+    const tq = $("qm-q").value, v = $("qm-where").value;
+    let bagId = null, place = "";
+    if (v === NEW) { place = pathStr(norm($("qm-new").value)); if (!place) { const er = $("qm-err"); er.textContent = "Напиши название нового места хранения."; er.hidden = false; $("qm-new").focus(); return; } }
+    else if (v.startsWith("bag:")) bagId = v.slice(4);
+    else if (v.startsWith("place:")) place = v.slice(6);
+    const btn = $("qm-save"); btn.disabled = true;
+    try {
+      const top = norm(place)[0];
+      if (top && !rawPlaces.some(p => QOF(p) === tq && low(p.name) === low(top))) {
+        const order = rawPlaces.filter(p => QOF(p) === tq).reduce((m, p) => Math.max(m, p.order || 0), 0) + 10;
+        await db.collection("places").doc().set({ name: top, order, q: tq });
+      }
+      const b = bagId && rawBags.find(x => x.id === bagId);
+      const parts = bagId ? [] : norm(place);
+      const t = Date.now();
+      const to = b ? "в «" + b.name + "»" + (b.location ? " (" + b.location + ")" : "") : (pathStr(parts) || "место не указано");
+      const d = { name: it.name, place: pathStr(parts), parts, in: bagId, qty: it.qty || "", note: it.note || "", photo: it.photo || null, missing: false, updatedAt: t, q: tq,
+        log: addLog(it.log, { t, kind: "move", to, in: bagId, note: "из колчана «" + qName(curQ) + "» в «" + qName(tq) + "»" }) };
+      await db.collection("items").doc(it.id).set(d);
+      $("qm-bg").hidden = true; closeSheet();
+    } catch (ex) { const er = $("qm-err"); er.textContent = "Не получилось перенести. Попробуй ещё раз."; er.hidden = false; }
+    finally { btn.disabled = false; }
+  });
+
   // ---------- render ----------
   function render() {
     const q = low($("q").value.trim());
@@ -533,12 +962,18 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const mk = (label, depth) => {
       const b = document.createElement("button"); b.type = "button"; b.textContent = label;
       if (depth === cur.length && !showMissing) b.setAttribute("aria-current", "true");
-      b.onclick = () => { cur = cur.slice(0, depth); showMissing = false; over = {}; endMode(); render(); };
+      b.onclick = () => goTo(cur.slice(0, depth));
       return b;
     };
     cr.appendChild(mk("Всё", 0));
     cur.forEach((p, i) => { const s = document.createElement("span"); s.className = "sep"; s.textContent = "/"; cr.appendChild(s); cr.appendChild(mk(p, i + 1)); });
     if (showMissing) { const s = document.createElement("span"); s.className = "sep"; s.textContent = "/"; cr.append(s, "не нашлись"); }
+    else if (cur.length && !bagAt(cur)) {
+      const rb = document.createElement("button"); rb.type = "button"; rb.className = "rn"; rb.innerHTML = pencil;
+      rb.setAttribute("aria-label", "Переименовать «" + cur[cur.length - 1] + "»"); rb.title = "Переименовать";
+      rb.onclick = () => openRename(cur.slice());
+      cr.appendChild(rb);
+    }
     cr.hidden = !cur.length && !showMissing;
 
     // search matches (used to filter places and bags while typing)
@@ -558,7 +993,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
         btn.append(b.name + " ");
         const c = document.createElement("span"); c.textContent = n; btn.appendChild(c);
         const w = document.createElement("small"); w.textContent = "· " + (b.dest ? "В пути → " + b.dest : (b.location || "место не указано")); btn.appendChild(w);
-        btn.onclick = () => { cur = norm(b.location).concat(b.name); over = {}; endMode(); render(); };
+        btn.onclick = () => goTo(norm(b.location).concat(b.name));
         bx.appendChild(btn);
       });
       if (!q) {
@@ -589,7 +1024,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       if (sent) { const t2 = document.createElement("span"); t2.className = "tr-meta"; t2.textContent = "с " + fmt.format(new Date(sent.t)); meta.appendChild(t2); }
       const btns = document.createElement("div"); btns.className = "tr-btns";
       const mk2 = (label, fn, cls) => { const x = document.createElement("button"); x.type = "button"; x.textContent = label; if (cls) x.className = cls; x.onclick = fn; btns.appendChild(x); };
-      mk2("Что внутри", () => { cur = norm(b.location).concat(b.name); over = {}; endMode(); render(); window.scrollTo(0, 0); });
+      mk2("Что внутри", () => goTo(norm(b.location).concat(b.name)));
       mk2("Изменить", () => openItemPick("edit", b));
       mk2("Принять", () => openItemPick("recv", b), "primary");
       row.append(top, meta, btns);
@@ -608,14 +1043,14 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       const isBag = !!bagAt(cur.concat(name));
       const b = document.createElement("button"); b.type = "button"; b.className = "chip" + (isBag ? " bag" : "");
       b.append(name + " "); const c = document.createElement("span"); c.textContent = n; b.appendChild(c);
-      b.onclick = () => { cur = cur.concat(name); over = {}; endMode(); render(); };
+      b.onclick = () => goTo(cur.concat(name));
       ch.appendChild(b);
     });
     const missingN = items.filter(it => it.missing).length;
     if (atRoot && missingN && !q) {
       const m = document.createElement("button"); m.type = "button"; m.className = "chip miss";
       m.append("Не нашлись "); const c = document.createElement("span"); c.textContent = missingN; m.appendChild(c);
-      m.onclick = () => { showMissing = true; over = {}; endMode(); render(); };
+      m.onclick = () => goTo(cur, true);
       ch.appendChild(m);
     }
     if (atRoot && db && !q) {
@@ -637,6 +1072,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 
     // bag panel
     $("bag-panel").hidden = !viewBag || showMissing;
+    $("bag-qmove").hidden = qList().length < 2;
     if (viewBag) {
       const w = $("bag-where"); w.textContent = "«" + viewBag.name + "» сейчас: ";
       const bb = document.createElement("b"); bb.textContent = viewBag.dest ? "В пути → " + viewBag.dest : (viewBag.location || "место не указано"); w.appendChild(bb);
@@ -669,10 +1105,21 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
         ab.onclick = () => openChooser(raw);
         const wrap = document.createElement("div"); wrap.appendChild(ab); e.appendChild(wrap);
       }
-      else if (viewBag) { st.textContent = "Сумка пустая"; e.append(st, "Нажми «Добавить» или открой место и переложи вещи сюда через «Выбрать несколько»."); }
+      else if (viewBag) {
+        st.textContent = "Сумка пустая"; e.append(st, "Выбери, что положить в сумку.");
+        const ab = document.createElement("button"); ab.type = "button"; ab.className = "primary"; ab.style.marginTop = "14px";
+        ab.textContent = "Выбрать вещь"; ab.onclick = () => openPickInto(viewBag);
+        const wrap = document.createElement("div"); wrap.appendChild(ab); e.appendChild(wrap);
+      }
       else if (cur.length) { st.textContent = "Здесь пока пусто"; e.append(st, "Нажми «Добавить», и это место подставится само."); }
       else { st.textContent = "Здесь появятся твои вещи"; e.append(st, "Выбери место сверху и нажми «Добавить»."); }
       list.appendChild(e); return;
+    }
+    if (viewBag && !showMissing && !mode) {
+      // inside a bag: adding a new item goes straight into it
+      const ab = document.createElement("button"); ab.type = "button"; ab.className = "addrow";
+      ab.textContent = "+ Выбрать вещь"; ab.onclick = () => openPickInto(viewBag);
+      list.appendChild(ab);
     }
     shown.forEach(({ it, e }) => {
       const row = document.createElement("button"); row.type = "button";
@@ -811,7 +1258,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const name = $("nb-name").value.replace(/\//g, " ").trim();
     if (!name || bags.some(b => low(b.name) === low(name))) { $("nb").hidden = true; $("nb-name").value = ""; return; }
     const order = bags.reduce((m, b) => Math.max(m, b.order || 0), 0) + 10;
-    try { await db.collection("bags").doc().set({ name, location: places[0] ? places[0].name : "", order, log: [] }); $("nb-name").value = ""; $("nb").hidden = true; }
+    try { await db.collection("bags").doc().set({ name, location: places[0] ? places[0].name : "", order, log: [] }); $("nb-name").value = ""; $("nb").hidden = true; clearQ(); }
     catch (ex) { setStatus("Не получилось добавить сумку. Попробуй ещё раз."); }
   });
   $("np-cancel").onclick = () => { $("np").hidden = true; $("np-name").value = ""; };
@@ -820,7 +1267,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const name = $("np-name").value.replace(/\//g, " ").trim();
     if (!name || places.some(p => low(p.name) === low(name))) { $("np").hidden = true; $("np-name").value = ""; return; }
     const order = places.reduce((m, p) => Math.max(m, p.order || 0), 0) + 10;
-    try { await db.collection("places").doc().set({ name, order }); $("np-name").value = ""; $("np").hidden = true; }
+    try { await db.collection("places").doc().set({ name, order }); $("np-name").value = ""; $("np").hidden = true; clearQ(); }
     catch (ex) { setStatus("Не получилось добавить место. Попробуй ещё раз."); }
   });
 
@@ -854,6 +1301,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     $("f-qty").value = it ? (it.qty || "") : "";
     $("f-note").value = it ? (it.note || "") : "";
     $("f-del").hidden = !it; $("f-confirm").hidden = true; $("f-err").hidden = true;
+    $("f-qmove").hidden = !it || qList().length < 2;
     photoState = { id: it && it.photo || null, file: null, cleared: false };
     showPhoto();
     $("f-photo-wrap").hidden = !assets;
@@ -932,6 +1380,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       }
       if (oldPhoto && oldPhoto !== photo && assets) assets.delete(oldPhoto).catch(() => {});
       closeSheet();
+      if (!prev) clearQ();
     } catch (ex) {
       const c = ex && ex.code;
       err(c === "too_large" ? "Фото слишком большое." : c === "quota_exceeded" || c === "quota_or_state" ? "Место в базе закончилось." : c === "invalid_argument" ? "Изменять базу может только её владелец." : "Не получилось сохранить. Проверь интернет и попробуй ещё раз.");
@@ -940,17 +1389,17 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 
   // ---------- move: send bag / receive bag / move items ----------
   const TRANSIT = "В пути";
-  let mvMode = null, mvBag = null, mvSel = new Set(), mvStep = null;
+  let mvMode = null, mvBag = null, mvSel = new Set(), mvStep = null, mvInto = null;
   function mvView(v) {
     mvStep = v;
     $("mv-choose").hidden = v !== "choose"; $("mv-bags").hidden = v !== "bags"; $("mv-items").hidden = v !== "items";
     $("mv-bg").hidden = !v;
   }
-  function mvClose() { mvView(null); mvMode = null; mvBag = null; mvSel.clear(); }
+  function mvClose() { mvView(null); mvMode = null; mvBag = null; mvInto = null; mvSel.clear(); }
   $("mv-open").onclick = () => { mvMode = null; mvView("choose"); };
   document.querySelectorAll(".mv-cancel").forEach(b => b.onclick = mvClose);
   document.querySelectorAll(".mv-back").forEach(b => b.onclick = () => {
-    if (mvStep === "items" && mvMode !== "items") openBagPick(mvMode); else mvView("choose");
+    if (mvInto) mvClose(); else if (mvStep === "items" && mvMode !== "items") openBagPick(mvMode); else mvView("choose");
   });
   $("mv-bg").addEventListener("click", (e) => { if (e.target === $("mv-bg")) mvClose(); });
 
@@ -981,8 +1430,18 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   $("mv-pick-edit").onclick = () => openBagPick("edit");
   $("mv-pick-items").onclick = () => openItemPick("items", null);
 
+  // inside a bag: pick existing items to put into it
+  function openPickInto(bag) {
+    openItemPick("items", null);
+    mvInto = bag;
+    $("mv-items-title").textContent = "Выбрать вещи в «" + bag.name + "»";
+    $("mv-sub").textContent = "Отметь вещи — они лягут в сумку. Можно найти поиском или добавить новую.";
+    $("mv-to").value = "bag:" + bag.id;
+    $("mv-go").textContent = "Положить";
+    renderPick();
+  }
   function openItemPick(kind, bag) {
-    mvMode = kind; mvBag = bag; mvSel = new Set();
+    mvMode = kind; mvBag = bag; mvSel = new Set(); mvInto = null;
     $("mv-q").value = ""; $("mv-note").value = ""; $("mv-err").hidden = true;
     if (kind === "edit") {
       items.filter(it => it.in === bag.id).forEach(it => mvSel.add(it.id));
@@ -1035,6 +1494,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const bm = bagMap();
     let rows = items.map(it => ({ it, e: eff(it, bm) }));
     if (mvMode === "recv") rows = rows.filter(x => x.it.in === mvBag.id);
+    if (mvInto) rows = rows.filter(x => x.it.in !== mvInto.id);
     if (q) rows = rows.filter(x => low(x.it.name).includes(q) || low(pathStr(x.e.parts)).includes(q));
     const rank = (x) => {
       if (mvMode === "send" || mvMode === "edit") {
@@ -1204,7 +1664,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     switch (sh.id) {
       case "add-place-form": case "add-bag-form": addView("choose"); break;
       case "mv-bags": mvView("choose"); break;
-      case "mv-items": if (mvMode && mvMode !== "items") openBagPick(mvMode); else mvView("choose"); break;
+      case "mv-items": if (mvInto) mvClose(); else if (mvMode && mvMode !== "items") openBagPick(mvMode); else mvView("choose"); break;
       default: sheetClose(sh);
     }
   }
@@ -1213,7 +1673,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     if (e.touches.length !== 1) { g = null; return; }
     const bgEl = e.target.classList && e.target.classList.contains("sheet-bg") ? e.target : null;
     const sh = e.target.closest(".sheet") || (bgEl ? bgEl.querySelector(".sheet:not([hidden])") : null);
-    if (!sh || sh.closest("[hidden]")) { g = null; return; }
+    if (!sh || sh.closest("[hidden]") || sh.classList.contains("drawer")) { g = null; return; }
     const tch = e.touches[0];
     const h2 = sh.querySelector("h2");
     const headBottom = h2 ? h2.getBoundingClientRect().bottom + 10 : sh.getBoundingClientRect().top + 64;
@@ -1262,10 +1722,11 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   document.addEventListener("touchcancel", gEnd);
 
   $("home-btn").onclick = () => {
-    $("q").value = ""; cur = []; showMissing = false; over = {};
+    $("q").value = ""; cur = []; showMissing = false; over = {}; levelMem = {};
     endMode(); mvClose(); addView(null);
     if (!$("sheet-bg").hidden) closeSheet();
     const dbg = document.getElementById("data-bg"); if (dbg) dbg.hidden = true;
+    $("qv-bg").hidden = true; $("qm-bg").hidden = true; $("rn-bg").hidden = true;
     setStatus(""); render(); window.scrollTo(0, 0);
   };
   $("q").addEventListener("input", () => { over = {}; render(); });
@@ -1302,7 +1763,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     if (!name) { er.textContent = "Напиши название места."; er.hidden = false; return; }
     if (places.some(p => low(p.name) === low(name))) { er.textContent = "Такое место уже есть."; er.hidden = false; return; }
     const order = places.reduce((m, p) => Math.max(m, p.order || 0), 0) + 10;
-    try { await db.collection("places").doc().set({ name, order }); addView(null); }
+    try { await db.collection("places").doc().set({ name, order }); addView(null); clearQ(); }
     catch (ex) { er.textContent = "Не получилось добавить место. Попробуй ещё раз."; er.hidden = false; }
   });
   $("add-bag-form").addEventListener("submit", async (e) => {
@@ -1318,7 +1779,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       if (where.isNew) await ensurePlace(where.place);
       const t = Date.now();
       await db.collection("bags").doc().set({ name, location: where.place || "", order, log: where.place ? [{ t, from: "", to: where.place }] : [] });
-      addView(null);
+      addView(null); clearQ();
     } catch (ex) { er.textContent = "Не получилось добавить сумку. Попробуй ещё раз."; er.hidden = false; }
   });
   render();
@@ -1327,25 +1788,31 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   (async () => {
     if (!window.__store || !window.__store.use) { loaded = true; render(); setStatus("База открывается только на странице артефакта в Claude."); return; }
     db = await window.__store.use("db");
+    if (db) db = quiverDb(db);
     if (!db) { loaded = true; render(); setStatus("Не удалось подключиться к базе. Войди в аккаунт Claude и открой страницу заново."); return; }
     window.__store.use("assets").then(a => { assets = a; }).catch(() => {});
     const timer = setTimeout(() => setStatus(loaded ? "Связи с базой нет, данные могут быть устаревшими." : "База пока не отвечает. Проверь интернет."), 10000);
     const onErr = (e) => { clearTimeout(timer); loaded = true; render(); setStatus(e && e.code === "revoked" ? "Доступ к базе закрыт." : "Не удалось загрузить базу. Обнови страницу позже."); };
     db.collection("places").orderBy("order").onSnapshot((snap) => {
-      places = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", order: v.order || 0 }; }).filter(p => p.name);
-      render();
+      rawPlaces = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", order: v.order || 0, q: v.q || MAINQ }; }).filter(p => p.name);
+      applyQ(); render();
     }, onErr);
     db.collection("bags").orderBy("order").onSnapshot((snap) => {
-      bags = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", location: v.location || "", dest: v.dest || null, order: v.order || 0, log: Array.isArray(v.log) ? v.log : [] }; }).filter(b => b.name);
-      render();
+      rawBags = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", location: v.location || "", dest: v.dest || null, order: v.order || 0, log: Array.isArray(v.log) ? v.log : [], q: v.q || MAINQ }; }).filter(b => b.name);
+      applyQ(); render();
     }, onErr);
     db.collection("items").onSnapshot((snap) => {
-      items = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", place: v.place || "", parts: Array.isArray(v.parts) ? v.parts : norm(v.place), in: v.in || null, qty: v.qty || "", note: v.note || "", photo: v.photo || null, missing: !!v.missing, updatedAt: v.updatedAt || 0, log: Array.isArray(v.log) ? v.log : [] }; });
+      rawItems = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", place: v.place || "", parts: Array.isArray(v.parts) ? v.parts : norm(v.place), in: v.in || null, qty: v.qty || "", note: v.note || "", photo: v.photo || null, missing: !!v.missing, updatedAt: v.updatedAt || 0, log: Array.isArray(v.log) ? v.log : [], q: v.q || MAINQ }; });
+      applyQ();
       loaded = true;
       if (!snap.metadata.fromCache) { clearTimeout(timer); setStatus(""); }
       render();
       if (mvStep === "items") renderPick();
     }, onErr);
+    db.collection("quivers").orderBy("order").onSnapshot((snap) => {
+      quivers = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", order: v.order || 0 }; }).filter(x => x.name);
+      applyQ(); render();
+    }, () => {});
   })();
 })();
 </script>

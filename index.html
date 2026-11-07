@@ -478,7 +478,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <h2>Данные</h2>
     <div class="note" id="d-stat"></div>
     <div class="note" id="d-last"></div>
-    <div class="note">Версия Колчана: <b>1.4.1</b></div>
+    <div class="note">Версия Колчана: <b>1.5.0</b></div>
     <div class="dataBtns">
       <button type="button" class="primary" id="d-export">Выгрузить файл</button>
       <label>Загрузить файл <span class="hint">заменит всю базу на этом телефоне</span>
@@ -506,9 +506,12 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="actions"><div class="right"><button type="button" id="d-close">Закрыть</button></div></div>
   </div>
 </div>
-<script>window.__KOLCHAN_VERSION = "1.4.1";</script>
+<script>window.__KOLCHAN_VERSION = "1.5.0";</script>
+<script>window.__KOLCHAN_AVA = true;</script>
 <script src="local.js"></script>
 <script src="friends.js"></script>
+<script>window.__CLOUD = {"url": "https://jtmujxxpcqjddauitrio.supabase.co", "key": "sb_publishable_PrBfsQIYFTYLzoqWso1CHA_ED-qe00L", "providers": ["email", "telegram"], "tgBot": "mykolchanbot"};</script>
+<script src="cloud.js"></script>
 
 <script>
 (function () {
@@ -786,15 +789,28 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   })();
 
   // ---------- rename a storage place (any level), inside the open quiver ----------
-  let rnPath = null;
+  let rnPath = null, rnBag = null;
+  const rnTexts = (bag) => {
+    $("rn-bg").querySelector("h2").textContent = bag ? "Переименовать сумку" : "Переименовать место";
+    $("rn-bg").querySelectorAll(".note")[1].textContent = bag
+      ? "Название поменяется везде, а в истории вещей из сумки появится запись о переименовании."
+      : "Название поменяется у всех вещей и сумок в этом месте. История перемещений останется как была.";
+  };
+  function openRenameBag(b) {
+    rnBag = b; rnPath = null; rnTexts(true);
+    $("rn-what").textContent = "Сейчас: " + b.name;
+    $("rn-name").value = b.name;
+    $("rn-err").hidden = true; $("rn-confirm").hidden = true;
+    $("rn-bg").hidden = false; setTimeout(() => { $("rn-name").focus(); $("rn-name").select(); }, 50);
+  }
   function openRename(P) {
-    rnPath = P;
+    rnPath = P; rnBag = null; rnTexts(false);
     $("rn-what").textContent = "Сейчас: " + pathStr(P);
     $("rn-name").value = P[P.length - 1];
     $("rn-err").hidden = true; $("rn-confirm").hidden = true;
     $("rn-bg").hidden = false; setTimeout(() => { $("rn-name").focus(); $("rn-name").select(); }, 50);
   }
-  const closeRename = () => { $("rn-bg").hidden = true; rnPath = null; };
+  const closeRename = () => { $("rn-bg").hidden = true; rnPath = null; rnBag = null; };
   $("rn-cancel").onclick = closeRename;
   $("rn-confirm-no").onclick = () => { $("rn-confirm").hidden = true; };
   $("rn-bg").addEventListener("click", (e) => { if (e.target === $("rn-bg")) closeRename(); });
@@ -808,7 +824,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const t = Date.now();
     for (const it of items.filter(i => !i.in && under(i.parts, P))) {
       const parts = swap(it.parts, P, NP);
-      await db.collection("items").doc(it.id).set({ name: it.name, place: pathStr(parts), parts, in: null, qty: it.qty || "", note: it.note || "", photo: it.photo || null, missing: !!it.missing, updatedAt: t, log: it.log || [] });
+      await db.collection("items").doc(it.id).set({ name: it.name, place: pathStr(parts), parts, in: null, qty: it.qty || "", note: it.note || "", photo: it.photo || null, missing: !!it.missing, updatedAt: t,
+        log: addLog(it.log, { t, kind: "rename", what: "place", from: pathStr(P), to: pathStr(NP) }) });
     }
     for (const b of bags) {
       const lp = norm(b.location), dp = norm(b.dest || "");
@@ -824,8 +841,31 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     }
     if (under(cur, P)) cur = swap(cur, P, NP);
   }
+  async function renameBag(b, name) {
+    const t = Date.now(), old = b.name;
+    await db.collection("bags").doc(b.id).set({ name, location: b.location || "", dest: b.dest || null, order: b.order || 0, log: b.log || [] });
+    let i = 1;
+    for (const it of items.filter(x => x.in === b.id)) {
+      await db.collection("items").doc(it.id).set({ name: it.name, place: it.place || "", parts: it.parts || [], in: b.id, qty: it.qty || "", note: it.note || "", photo: it.photo || null, missing: !!it.missing, updatedAt: t + i,
+        log: addLog(it.log, { t: t + i, kind: "rename", what: "bag", from: old, to: name }) });
+      i++;
+    }
+    if (bagAt(cur) === b || (cur.length && low(cur[cur.length - 1]) === low(old) && norm(b.location).every((x, k) => low(cur[k] || "") === low(x)))) cur = cur.slice(0, -1).concat(name);
+  }
   $("rn-form").addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (rnBag) {
+      const b = rnBag, er = $("rn-err");
+      const nm = $("rn-name").value.replace(/\//g, " ").replace(/\s+/g, " ").trim();
+      if (!nm) { er.textContent = "Напиши новое название."; er.hidden = false; return; }
+      if (nm === b.name) { closeRename(); return; }
+      if (bags.some(x => x !== b && low(x.name) === low(nm))) { er.textContent = "Сумка с таким названием уже есть. Выбери другое."; er.hidden = false; return; }
+      const btn = $("rn-save"); btn.disabled = true;
+      try { await renameBag(b, nm); closeRename(); render(); }
+      catch (ex) { er.textContent = "Не получилось переименовать. Попробуй ещё раз."; er.hidden = false; }
+      finally { btn.disabled = false; }
+      return;
+    }
     const P = rnPath; if (!P) return;
     const NP = rnTarget();
     const er = $("rn-err");
@@ -968,10 +1008,10 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     cr.appendChild(mk("Всё", 0));
     cur.forEach((p, i) => { const s = document.createElement("span"); s.className = "sep"; s.textContent = "/"; cr.appendChild(s); cr.appendChild(mk(p, i + 1)); });
     if (showMissing) { const s = document.createElement("span"); s.className = "sep"; s.textContent = "/"; cr.append(s, "не нашлись"); }
-    else if (cur.length && !bagAt(cur)) {
+    else if (cur.length) {
       const rb = document.createElement("button"); rb.type = "button"; rb.className = "rn"; rb.innerHTML = pencil;
       rb.setAttribute("aria-label", "Переименовать «" + cur[cur.length - 1] + "»"); rb.title = "Переименовать";
-      rb.onclick = () => openRename(cur.slice());
+      rb.onclick = () => { const vb = bagAt(cur); if (vb) openRenameBag(vb); else openRename(cur.slice()); };
       cr.appendChild(rb);
     }
     cr.hidden = !cur.length && !showMissing;
@@ -1279,6 +1319,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       if (e.kind === "check-ok") out.push({ t: e.t, cls: "ok", text: "На месте при сверке: " + e.to });
       else if (e.kind === "check-miss") out.push({ t: e.t, cls: "miss", text: "Не нашёл при сверке: " + e.to });
       else if (e.kind === "note") out.push({ t: e.t, cls: "", text: e.note ? "Заметка: " + e.note : "Заметка снята" });
+      else if (e.kind === "rename") out.push({ t: e.t, cls: "", text: e.what === "place" ? "Место «" + e.from + "» переименовано в «" + e.to + "»" : e.what === "bag" ? "Сумка «" + e.from + "» переименована в «" + e.to + "»" : "Переименовал: «" + e.from + "» → «" + e.to + "»" });
       else out.push({ t: e.t, cls: "", text: "Положил " + e.to + (e.note ? " — " + e.note : "") });
       if (e.kind === "move" && e.in && bm[e.in]) {
         const end = (log.slice(i + 1).find(x => x.kind === "move") || {}).t || Infinity;
@@ -1371,6 +1412,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       const d = { name, place: pathStr(parts), parts, in: bagId, qty: $("f-qty").value.trim(), note: $("f-note").value.trim(), photo: photo || null, missing: prev ? !!prev.missing : false, updatedAt: t, log: prev ? (prev.log || []) : [] };
       const moved = !prev || (prev.in || null) !== bagId || (!bagId && prev.place !== d.place);
       if (prev && (prev.note || "") !== d.note) d.log = addLog(d.log, { t, kind: "note", note: d.note });
+      if (prev && prev.name !== d.name) d.log = addLog(d.log, { t, kind: "rename", from: prev.name, to: d.name });
       if (moved) { d.missing = false; const le = { t, kind: "move", to: labelFor(bagId ? { in: bagId } : { place: d.place }, bagMap()), in: bagId }; const mn = $("f-mnote").value.trim(); if (mn) le.note = mn; d.log = addLog(d.log, le); }
       if (prev) await db.collection("items").doc(prev.id).set(d);
       else {
@@ -1673,7 +1715,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     if (e.touches.length !== 1) { g = null; return; }
     const bgEl = e.target.classList && e.target.classList.contains("sheet-bg") ? e.target : null;
     const sh = e.target.closest(".sheet") || (bgEl ? bgEl.querySelector(".sheet:not([hidden])") : null);
-    if (!sh || sh.closest("[hidden]") || sh.classList.contains("drawer")) { g = null; return; }
+    if (!sh || sh.closest("[hidden]") || sh.classList.contains("drawer") || sh.closest(".gate")) { g = null; return; }
     const tch = e.touches[0];
     const h2 = sh.querySelector("h2");
     const headBottom = h2 ? h2.getBoundingClientRect().bottom + 10 : sh.getBoundingClientRect().top + 64;

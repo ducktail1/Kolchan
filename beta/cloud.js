@@ -313,7 +313,7 @@
           '<button type="submit" class="primary" id="acc-go">Войти</button>' +
         '</form>' +
         '<div class="acc-or" style="margin:14px 0">или</div>' +
-        '<div class="acc-prov">' + pbtn("telegram", "Войти через Telegram", "✈️ ") + pbtn("phone", "По номеру телефона", "📱 ") + pbtn("google", "Google", "G ") + pbtn("yandex", "Яндекс ID", "Я ") + '</div>' +
+        '<div class="acc-prov">' + pbtn("telegram", "Войти через Telegram", "✈️ ") + pbtn("google", "Google", "G ") + pbtn("yandex", "Яндекс ID", "Я ") + '</div>' +
       '</div>' +
       '<div id="acc-in" hidden style="display:flex;flex-direction:column;gap:12px">' +
         '<div class="acc-me"><div class="acc-ava" id="acc-ava"></div><div><b id="acc-mail"></b><span class="note">База хранится онлайн и на этом телефоне</span></div></div>' +

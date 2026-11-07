@@ -16,7 +16,7 @@ const LOG_MAX = 80;
 const DATA = ["places", "bags", "items", "quivers"];
 const MAINQ = "main", MAIN_NAME = "Основной";
 const QOF = (r) => (r && r.q) || MAINQ;
-export const BOT_VERSION = "1.2.0";
+export const BOT_VERSION = "1.2.1";
 
 // ---------- helpers ----------
 const low = (s) => (s || "").toLowerCase().replace(/ё/g, "е");
@@ -237,6 +237,7 @@ function logLine(e) {
   if (e.kind === "check-ok") what = "✔ на месте";
   else if (e.kind === "check-miss") what = "⚠ не нашлась";
   else if (e.kind === "note") what = "📝";
+  else if (e.kind === "rename") return fmtDate(e.t || 0) + " — ✎ " + esc(e.what === "place" ? "место «" + e.from + "» → «" + e.to + "»" : "«" + e.from + "» → «" + e.to + "»");
   else what = "→ " + (e.to || "");
   return when + " — " + esc(what) + (e.note ? " · " + esc(e.note) : "");
 }
@@ -357,7 +358,7 @@ function searchView(d, q) {
 function doRename(d, p, name) {
   const ds = scope(d, QOF(p)), old = low(p.name), t = Date.now();
   const swap = (path) => { const a = norm(path); if (low(a[0]) !== old) return null; a[0] = name; return pathStr(a); };
-  ds.items.forEach((i) => { if (i.in) return; const np = swap(i.place); if (np === null) return; i.parts = norm(np); i.place = np; i.updatedAt = t; i._t = t; });
+  ds.items.forEach((i) => { if (i.in) return; const op = i.place, np = swap(i.place); if (np === null) return; i.parts = norm(np); i.place = np; i.updatedAt = t; i._t = t; i.log = addLog(i.log, { t, kind: "rename", what: "place", from: op, to: np }); });
   ds.bags.forEach((b) => { const nl = swap(b.location), nd = b.dest ? swap(b.dest) : null; if (nl === null && nd === null) return; if (nl !== null) b.location = nl; if (nd !== null) b.dest = nd; b._t = t; });
   const other = ds.places.find((x) => x !== p && low(x.name) === low(name));
   const r = rootOf(d);

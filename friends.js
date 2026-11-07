@@ -164,15 +164,17 @@ details.sync > *:not(summary) { margin-top: 8px; }
       let show = false;
       try {
         const sync = await K.get("meta", "sync");
+        const cloud = await K.get("meta", "cloudSession");
         const last = await K.get("meta", "lastExport");
         const snooze = await K.get("meta", "remindSnooze");
         const real = state.items.length;
         const now = Date.now();
-        show = !(sync && sync.token) && real >= 5 && (!last || now - last.t > 7 * DAY) && !(snooze && snooze.until > now);
+        show = !(sync && sync.token) && !(cloud && cloud.access_token) && real >= 5 && (!last || now - last.t > 7 * DAY) && !(snooze && snooze.until > now);
       } catch (e) {}
       rem.hidden = !show || !!window.__kolchanMemory || !!window.__KOLCHAN_SEED;
       membar.hidden = !window.__kolchanMemory;
     }
+    window.__kolchanRemind = refresh;
     ["places", "bags", "items"].forEach(c => db.collection(c).onSnapshot((s) => { state[c] = s.docs.map(d => Object.assign({ id: d.id }, d.data())); refresh(); }));
 
     $("wel-start").onclick = () => { const a = $("add"); a.click(); setTimeout(() => { const p = $("add-place"); if (p) p.click(); }, 50); };

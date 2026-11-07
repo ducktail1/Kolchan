@@ -14,7 +14,7 @@
 const TRANSIT = "В пути";
 const LOG_MAX = 80;
 const DATA = ["places", "bags", "items"];
-export const BOT_VERSION = "1.0.0";
+export const BOT_VERSION = "1.1.0";
 
 // ---------- helpers ----------
 const low = (s) => (s || "").toLowerCase().replace(/ё/g, "е");
@@ -147,203 +147,324 @@ function addItem(d, name, dest) {
   return it;
 }
 
-// ---------- views ----------
-function showBag(d, b) {
-  const inside = d.items.filter((i) => i.in === b.id);
-  let s = "🎒 <b>" + esc(b.name) + "</b>\n📍 " + esc(bagWhere(b)) + "\n";
-  s += inside.length ? "\n" + inside.map((i) => "• " + esc(i.name) + (i.missing ? " ⚠ не нашлась" : "")).join("\n") : "\nПустая.";
-  return s;
-}
-function showPlace(d, path) {
-  const P = norm(path), lp = P.map(low);
-  const under = (parts) => lp.every((x, i) => low(parts[i] || "") === x);
-  const loose = d.items.filter((i) => !i.in && under(i.parts || []));
-  const bags = d.bags.filter((b) => under(norm(b.location)));
-  let s = "📍 <b>" + esc(pathStr(P)) + "</b>\n";
-  if (bags.length) s += "\n" + bags.map((b) => "🎒 " + esc(b.name) + " — " + nItems(d.items.filter((i) => i.in === b.id).length) + (norm(b.location).length > P.length ? " (" + esc(b.location) + ")" : "")).join("\n") + "\n";
-  if (loose.length) {
-    s += "\n" + loose.sort((a, b) => a.place.localeCompare(b.place, "ru") || a.name.localeCompare(b.name, "ru"))
-      .map((i) => "• " + esc(i.name) + ((i.parts || []).length > P.length ? " — " + esc(pathStr(i.parts.slice(P.length))) : "") + (i.missing ? " ⚠" : "")).join("\n");
+// ---------- small UI helpers ----------
+const PAGE = 15;
+const fmtDate = (t) => new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" }).format(new Date(t));
+const cut = (s, n = 56) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+const btn = (text, data) => ({ text: cut(text), callback_data: data });
+const kbd = (rows) => ({ inline_keyboard: rows.filter((r) => r && r.length) });
+const pairs = (arr) => { const rows = []; for (let i = 0; i < arr.length; i += 2) rows.push(arr.slice(i, i + 2)); return rows; };
+const byOrder = (a, b) => (a.order || 0) - (b.order || 0);
+const sortedPlaces = (d) => d.places.slice().sort(byOrder);
+const sortedBags = (d) => d.bags.slice().sort(byOrder);
+
+// Hidden state travels inside the bot's own message as an invisible link,
+// so the bot needs no storage of its own: replies and button presses carry it back.
+const STATE_URL = "https://ducktail1.github.io/Kolchan/#s=";
+const b64url = (s) => b64enc(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const unb64url = (s) => b64dec(s.replace(/-/g, "+").replace(/_/g, "/"));
+const st = (obj) => '<a href="' + STATE_URL + b64url(JSON.stringify(obj)) + '">&#8205;</a>';
+export function readState(msg) {
+  for (const e of (msg && (msg.entities || msg.caption_entities)) || []) {
+    if (e.type === "text_link" && e.url && e.url.startsWith(STATE_URL)) { try { return JSON.parse(unb64url(e.url.slice(STATE_URL.length))); } catch (x) {} }
   }
-  if (!bags.length && !loose.length) s += "\nЗдесь ничего нет.";
-  return s;
+  return null;
 }
 
-// ---------- commands ----------
-const HELP =
-  "<b>Колчан</b> — где что лежит.\n\n" +
-  "🔎 <b>Найти:</b> просто напиши название — <code>маска</code>\n" +
-  "➕ <b>Добавить:</b> <code>+ Маска Smith → Дача</code>\n   несколько сразу: <code>+ носки, шапка → Eastpak</code>\n" +
-  "⇄ <b>Переложить:</b> <code>маска → Сочи</code>, <code>маска → Eastpak</code>\n   сумку целиком: <code>Eastpak → Кировск</code>\n" +
-  "   с заметкой: <code>маска → Дача // в стирке</code>\n" +
-  "📍 <b>Показать:</b> название сумки или места — <code>Дача</code>, <code>Eastpak</code>\n\n" +
-  "/places — места, /bags — сумки";
+const MENU = {
+  keyboard: [[{ text: "🔎 Найти" }, { text: "➕ Добавить" }, { text: "⇄ Переложить" }], [{ text: "📍 Места" }, { text: "🎒 Сумки" }], [{ text: "🚚 В пути" }, { text: "🕓 История" }]],
+  resize_keyboard: true, is_persistent: true,
+};
 
-function kbd(rows) { return { inline_keyboard: rows }; }
-function destButtons(d, prefix) {
-  const btn = (text, data) => ({ text, callback_data: data });
-  const rows = [];
-  const pl = d.places.slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map((p) => btn("📍 " + p.name, prefix + "p:" + p.id));
-  const bg = d.bags.slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map((b) => btn("🎒 " + b.name, prefix + "b:" + b.id));
-  for (let i = 0; i < pl.length; i += 2) rows.push(pl.slice(i, i + 2));
-  bg.forEach((b) => rows.push([b]));
-  return rows;
-}
-function destFromCode(d, kind, id) {
+const topPlace = (d, name) => d.places.find((p) => low(p.name) === low(norm(name)[0]));
+const countAt = (d, p) => {
+  const lp = low(p.name);
+  return d.items.filter((i) => (!i.in && low((i.parts || [])[0]) === lp) || (i.in && low(norm((bagById(d, i.in) || {}).location)[0]) === lp)).length;
+};
+const inBag = (d, b) => d.items.filter((i) => i.in === b.id);
+const targetOf = (d, kind, id) => (kind === "b" ? bagById(d, id) : d.items.find((i) => i.id === id));
+const destFromCode = (d, kind, id) => {
   if (kind === "p") { const p = d.places.find((x) => x.id === id); return p ? { place: p.name } : null; }
   const b = bagById(d, id); return b ? { in: b.id } : null;
+};
+const backFor = (d, it) => {
+  if (it.in && bagById(d, it.in)) return btn("⬅ " + bagById(d, it.in).name, "b:" + it.in);
+  const p = topPlace(d, it.place); return p ? btn("⬅ " + p.name, "p:" + p.id) : btn("⬅ Места", "P");
+};
+const pager = (prefix, page, total) => {
+  const pages = Math.ceil(total / PAGE); if (pages <= 1) return [];
+  const row = [];
+  if (page > 0) row.push(btn("◀", prefix + ":" + (page - 1)));
+  row.push(btn((page + 1) + " / " + pages, "noop"));
+  if (page < pages - 1) row.push(btn("▶", prefix + ":" + (page + 1)));
+  return row;
+};
+function logLine(e) {
+  const when = fmtDate(e.t || 0);
+  let what;
+  if (e.kind === "check-ok") what = "✔ на месте";
+  else if (e.kind === "check-miss") what = "⚠ не нашлась";
+  else if (e.kind === "note") what = "📝";
+  else what = "→ " + (e.to || "");
+  return when + " — " + esc(what) + (e.note ? " · " + esc(e.note) : "");
 }
-const CMD_MARK = "\n\n⤷ ";   // the original command is kept on the last line of bot questions
-const withCmd = (text, cmd) => text + CMD_MARK + esc(cmd);
 
-// returns { text, kb?, change? }  (change = commit message when data changed)
-export function run(d, input, opt = {}) {
-  let cmd = clean(input);
-  if (/^\/start|^\/help/.test(cmd)) return { text: HELP };
-  if (/^\/places/.test(cmd)) {
-    const rows = d.places.slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map((p) => {
-      const lp = low(p.name);
-      const n = d.items.filter((i) => (!i.in && low((i.parts || [])[0]) === lp) || (i.in && low(norm((bagById(d, i.in) || {}).location)[0]) === lp)).length;
-      return "📍 " + esc(p.name) + " — " + nItems(n);
-    });
-    return { text: rows.join("\n") || "Мест пока нет." };
-  }
-  if (/^\/bags/.test(cmd)) {
-    return { text: d.bags.slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map((b) => "🎒 " + esc(b.name) + " — " + esc(bagWhere(b)) + ", " + nItems(d.items.filter((i) => i.in === b.id).length)).join("\n") || "Сумок пока нет." };
-  }
-  if (cmd.startsWith("/")) return { text: HELP };
-
-  // note: "… // заметка"
-  let note = "";
-  const ni = cmd.indexOf("//");
-  if (ni >= 0) { note = clean(cmd.slice(ni + 2)); cmd = clean(cmd.slice(0, ni)); }
-  const arrow = cmd.match(/\s*(?:→|->|=>|—>|>>)\s*/);
-  const what = clean(arrow ? cmd.slice(0, arrow.index) : cmd);
-  const whereText = arrow ? clean(cmd.slice(arrow.index + arrow[0].length)) : "";
-  const original = clean(input);
-
-  // ----- add -----
-  if (/^\+/.test(what)) {
-    const names = what.replace(/^\+\s*/, "").split(",").map(clean).filter(Boolean);
-    if (!names.length) return { text: "Напиши, что добавить: <code>+ Маска Smith → Дача</code>" };
-    let dest = opt.dest || (whereText ? resolveDest(d, whereText) : null);
-    if (!dest) return { text: withCmd("Куда положить: <b>" + esc(names.join(", ")) + "</b>?", original), kb: kbd(destButtons(d, "d:")) };
-    if (dest.ambiguous) return { text: withCmd("Уточни, куда: «" + esc(whereText) + "»", original), kb: kbd(destButtons({ places: dest.places, bags: dest.bags }, "d:")) };
-    if (dest.unknown) {
-      if (!opt.allowNew) return { text: withCmd("Места «" + esc(dest.unknown) + "» нет. Создать?", original), kb: kbd([[{ text: "Создать «" + dest.unknown + "»", callback_data: "new" }]]) };
-      ensurePlace(d, dest.unknown); dest = { place: dest.unknown };
-    }
-    const dup = names.filter((n) => d.items.some((i) => low(i.name) === low(n)));
-    const added = names.map((n) => addItem(d, n, dest));
-    if (note) added.forEach((it) => { it.log[0].note = note; });
-    return {
-      text: "➕ " + added.map((i) => "<b>" + esc(i.name) + "</b>").join(", ") + " → " + esc(labelFor(d, dest)) + (note ? "\n📝 " + esc(note) : "") +
-        (dup.length ? "\n\nℹ️ Уже были вещи с таким названием: " + esc(dup.join(", ")) + ". Добавил ещё одну." : ""),
-      change: "Бот: добавлено " + names.join(", "),
-    };
-  }
-
-  // ----- move -----
-  if (arrow) {
-    if (!what) return { text: "Напиши, что переложить: <code>маска → Сочи</code>" };
-    let target = opt.target || null;
-    const byId = what.match(/^@([ib]):(\S+)$/);
-    if (!target && byId) {
-      const o = byId[1] === "b" ? bagById(d, byId[2]) : d.items.find((i) => i.id === byId[2]);
-      if (!o) return { text: "Не нашёл — может, уже удалено." };
-      target = { kind: byId[1], o };
-    }
-    if (!target) {
-      const f = findThings(d, what);
-      const all = f.items.map((i) => ({ kind: "i", o: i })).concat(f.bags.map((b) => ({ kind: "b", o: b })));
-      if (!all.length) return { text: "Не нашёл «" + esc(what) + "». Чтобы добавить новую вещь: <code>+ " + esc(what) + (whereText ? " → " + esc(whereText) : "") + "</code>" };
-      if (all.length > 1) {
-        const rows = all.slice(0, 20).map((x) => [{ text: (x.kind === "b" ? "🎒 " : "") + x.o.name + " — " + (x.kind === "b" ? bagWhere(x.o) : itemWhere(d, x.o)), callback_data: "t:" + x.kind + ":" + x.o.id }]);
-        return { text: withCmd("Что именно переложить?" + (all.length > 20 ? " Показал первые 20 — напиши точнее." : ""), original), kb: kbd(rows) };
-      }
-      target = all[0];
-    }
-    const tCode = target.kind + ":" + target.o.id;
-    const tCmd = "@" + tCode + " → " + whereText + (note ? " // " + note : "");
-    const forBag = target.kind === "b";
-    if (!whereText && !opt.dest) return { text: "Куда переложить <b>" + esc(target.o.name) + "</b>?", kb: kbd(destButtons(forBag ? { places: d.places, bags: [] } : d, "md:" + tCode + ":")) };
-    let dest = opt.dest || resolveDest(d, whereText);
-    if (dest.ambiguous) return { text: "Уточни, куда переложить <b>" + esc(target.o.name) + "</b>:", kb: kbd(destButtons({ places: dest.places, bags: forBag ? [] : dest.bags }, "md:" + tCode + ":")) };
-    if (dest.unknown) {
-      if (!opt.allowNew) return { text: withCmd("<b>" + esc(target.o.name) + "</b>: места «" + esc(dest.unknown) + "» нет. Создать?", tCmd), kb: kbd([[{ text: "Создать «" + dest.unknown + "»", callback_data: "new" }]]) };
-      ensurePlace(d, dest.unknown); dest = { place: dest.unknown };
-    }
-    if (target.kind === "b") {
-      if (dest.in) return { text: "Сумку можно переложить только в место, не в другую сумку." };
-      const b = target.o;
-      if (!moveBag(d, b, dest.place, note)) return { text: "🎒 <b>" + esc(b.name) + "</b> уже там: " + esc(b.location) };
-      const n = d.items.filter((i) => i.in === b.id).length;
-      return { text: "⇄ 🎒 <b>" + esc(b.name) + "</b> → " + esc(dest.place) + (n ? " (вместе с ней " + nItems(n) + ")" : "") + (note ? "\n📝 " + esc(note) : ""), change: "Бот: " + b.name + " → " + dest.place };
-    }
-    const it = target.o;
-    if (dest.in === it.id) return { text: "Нельзя положить вещь саму в себя." };
-    if (!moveItem(d, it, dest, note)) return { text: "<b>" + esc(it.name) + "</b> уже там: " + esc(itemWhere(d, it)) };
-    return { text: "⇄ <b>" + esc(it.name) + "</b> → " + esc(labelFor(d, dest)) + (note ? "\n📝 " + esc(note) : ""), change: "Бот: " + it.name + " → " + labelFor(d, dest) };
-  }
-
-  // ----- show / find -----
-  const q = clean(what.replace(/^(где|найди|найти|покажи|показать)\s+/i, "").replace(/\?$/, ""));
-  if (!q) return { text: HELP };
+// ---------- views (return {text, kb}) ----------
+function itemCard(d, it, head) {
+  let s = (head ? head + "\n\n" : "") + "<b>" + esc(it.name) + "</b>" + (it.qty ? " × " + esc(it.qty) : "") + "\n📍 " + esc(itemWhere(d, it));
+  if (it.missing) s += "\n⚠ отмечена как не нашлась";
+  if (it.note) s += "\n📝 " + esc(it.note);
+  const log = (it.log || []).slice(-6).reverse();
+  if (log.length) s += "\n\n🕓 <b>Перемещения</b>\n" + log.map(logLine).join("\n");
+  return { text: s, kb: kbd([[btn("⇄ Переложить", "mv:i:" + it.id)], [backFor(d, it)]]) };
+}
+function placeView(d, p, page = 0, head) {
+  const lp = low(p.name);
+  const bags = sortedBags(d).filter((b) => low(norm(b.location)[0]) === lp);
+  const loose = d.items.filter((i) => !i.in && low((i.parts || [])[0]) === lp)
+    .sort((a, b) => a.place.localeCompare(b.place, "ru") || a.name.localeCompare(b.name, "ru"));
+  let s = (head ? head + "\n\n" : "") + "📍 <b>" + esc(p.name) + "</b>\n" + (bags.length ? bags.length + " " + plural(bags.length, ["сумка", "сумки", "сумок"]) + " · " : "") + nItems(loose.length) + " отдельно";
+  if (!bags.length && !loose.length) s += "\n\nЗдесь пока ничего нет.";
+  const rows = [];
+  if (page === 0) bags.forEach((b) => rows.push([btn("🎒 " + b.name + " · " + inBag(d, b).length, "b:" + b.id)]));
+  loose.slice(page * PAGE, page * PAGE + PAGE).forEach((i) => rows.push([btn((i.missing ? "⚠ " : "") + i.name + ((i.parts || []).length > 1 ? " · " + pathStr(i.parts.slice(1)) : ""), "i:" + i.id)]));
+  rows.push(pager("p:" + p.id, page, loose.length));
+  rows.push([btn("➕ Добавить сюда", "ad:p:" + p.id), btn("⬅ Места", "P")]);
+  return { text: s, kb: kbd(rows) };
+}
+function bagView(d, b, page = 0, head) {
+  const inside = inBag(d, b).sort((a, c) => a.name.localeCompare(c.name, "ru"));
+  let s = (head ? head + "\n\n" : "") + "🎒 <b>" + esc(b.name) + "</b>\n📍 " + esc(bagWhere(b)) + "\nВнутри: " + nItems(inside.length);
+  const last = (b.log || []).slice(-4).reverse();
+  if (last.length) s += "\n\n🕓 <b>Перемещения</b>\n" + last.map((e) => fmtDate(e.t || 0) + " — " + esc((e.from ? e.from + " " : "") + "→ " + (e.to || "")) + (e.note ? " · " + esc(e.note) : "")).join("\n");
+  const rows = inside.slice(page * PAGE, page * PAGE + PAGE).map((i) => [btn((i.missing ? "⚠ " : "") + i.name, "i:" + i.id)]);
+  rows.push(pager("b:" + b.id, page, inside.length));
+  if (b.location === TRANSIT) rows.push([btn("✅ Принять" + (b.dest ? " в " + b.dest : ""), "rc:" + b.id)]);
+  rows.push([btn("🚚 Отправить", "snd:" + b.id), btn("⇄ Переложить", "mv:b:" + b.id)]);
+  const p = topPlace(d, b.location);
+  rows.push([btn("➕ Положить в сумку", "ad:b:" + b.id), p ? btn("⬅ " + p.name, "p:" + p.id) : btn("⬅ Сумки", "B")]);
+  return { text: s, kb: kbd(rows) };
+}
+function placesList(d) {
+  const rows = pairs(sortedPlaces(d).map((p) => btn("📍 " + p.name + " · " + countAt(d, p), "p:" + p.id)));
+  rows.push([btn("➕ Новое место", "npl")]);
+  return { text: "📍 <b>Места</b>", kb: kbd(rows) };
+}
+function bagsList(d) {
+  const bags = sortedBags(d);
+  return { text: bags.length ? "🎒 <b>Сумки</b>" : "Сумок пока нет.", kb: kbd(bags.map((b) => [btn("🎒 " + b.name + " · " + bagWhere(b), "b:" + b.id)])) };
+}
+function transitList(d) {
+  const bags = sortedBags(d).filter((b) => b.location === TRANSIT);
+  if (!bags.length) return { text: "🚚 Сейчас ничего не в пути." };
+  return {
+    text: "🚚 <b>В пути</b>\n\n" + bags.map((b) => { const e = (b.log || []).slice(-1)[0]; return "🎒 " + esc(b.name) + (b.dest ? " → " + esc(b.dest) : "") + " · " + nItems(inBag(d, b).length) + (e ? "\n   с " + fmtDate(e.t) : ""); }).join("\n"),
+    kb: kbd(bags.map((b) => [btn("🎒 " + b.name, "b:" + b.id), btn("✅ Принять", "rc:" + b.id)])),
+  };
+}
+function historyView(d) {
+  const ev = [];
+  d.items.forEach((i) => (i.log || []).forEach((e) => { if (!e.kind || e.kind === "move") ev.push({ t: e.t || 0, name: i.name, to: e.to, note: e.note, data: "i:" + i.id }); }));
+  d.bags.forEach((b) => (b.log || []).forEach((e) => ev.push({ t: e.t || 0, name: "🎒 " + b.name, to: e.to, note: e.note, data: "b:" + b.id })));
+  ev.sort((a, b) => b.t - a.t);
+  const top = ev.slice(0, 15);
+  if (!top.length) return { text: "🕓 Перемещений пока нет." };
+  return {
+    text: "🕓 <b>Последние перемещения</b>\n\n" + top.map((e) => fmtDate(e.t) + " — <b>" + esc(e.name) + "</b> → " + esc(e.to || "") + (e.note ? " · " + esc(e.note) : "")).join("\n"),
+    kb: kbd(top.slice(0, 10).map((e) => [btn(e.name + " → " + (e.to || ""), e.data)])),
+  };
+}
+// where to put something: places in pairs, then bags (for items), then "new place" and "back"
+function destPicker(d, kind, id, title) {
+  const t = targetOf(d, kind, id);
+  const rows = pairs(sortedPlaces(d).filter((p) => !(kind === "b" && p.name === TRANSIT)).map((p) => btn("📍 " + p.name, "md:" + kind + ":" + id + ":p:" + p.id)));
+  if (kind === "i") sortedBags(d).forEach((b) => rows.push([btn("🎒 " + b.name + " · " + b.location, "md:i:" + id + ":b:" + b.id)]));
+  rows.push([btn("➕ Новое место", "nw:" + kind + ":" + id), btn("⬅ Назад", kind + ":" + id)]);
+  return { text: title || "Куда переложить <b>" + esc(t.name) + "</b>?", kb: kbd(rows) };
+}
+function addPicker(d, names) {
+  const rows = pairs(sortedPlaces(d).map((p) => btn("📍 " + p.name, "ap:p:" + p.id)));
+  sortedBags(d).forEach((b) => rows.push([btn("🎒 " + b.name + " · " + b.location, "ap:b:" + b.id)]));
+  rows.push([btn("➕ Новое место", "anp")]);
+  return { text: st({ k: "add", n: names }) + "Куда положить: <b>" + esc(names.join(", ")) + "</b>?", kb: kbd(rows) };
+}
+function searchView(d, q) {
+  q = clean(q.replace(/^(где|найди|найти|покажи|показать)\s+/i, "").replace(/\?$/, ""));
+  if (!q) return { text: "Напиши, что ищешь." };
   const paths = allPaths(d);
   const pq = pathStr(norm(q));
-  if (paths.has(low(pq))) return { text: showPlace(d, paths.get(low(pq))) };
-  const exB = d.bags.filter((b) => low(b.name) === low(q));
-  if (exB.length === 1) return { text: showBag(d, exB[0]), kb: kbd([[{ text: "⇄ Переложить сумку", callback_data: "m:b:" + exB[0].id }]]) };
+  const exactPlace = d.places.find((p) => low(p.name) === low(pq));
+  if (exactPlace) return placeView(d, exactPlace);
+  const exactBag = d.bags.filter((b) => low(b.name) === low(q));
+  if (exactBag.length === 1) return bagView(d, exactBag[0]);
   const f = findThings(d, q);
-  const placeHits = d.places.filter((p) => matches(p.name, q));
-  if (!f.items.length && f.bags.length === 1 && !placeHits.length) return { text: showBag(d, f.bags[0]), kb: kbd([[{ text: "⇄ Переложить сумку", callback_data: "m:b:" + f.bags[0].id }]]) };
-  if (!f.items.length && !f.bags.length && placeHits.length === 1) return { text: showPlace(d, placeHits[0].name) };
-  if (!f.items.length && !f.bags.length && !placeHits.length) return { text: "Не нашёл «" + esc(q) + "».\nДобавить: <code>+ " + esc(q) + " → место</code>" };
-  if (f.items.length === 1 && !f.bags.length) {
-    const it = f.items[0];
-    const last = (it.log || []).slice(-1)[0];
-    return {
-      text: "<b>" + esc(it.name) + "</b>\n📍 " + esc(itemWhere(d, it)) + (it.missing ? "\n⚠ отмечена как не нашлась" : "") + (it.note ? "\n📝 " + esc(it.note) : "") +
-        (last && last.note ? "\n🕓 " + esc(last.note) : ""),
-      kb: kbd([[{ text: "⇄ Переложить", callback_data: "m:i:" + it.id }]]),
-    };
+  const pl = d.places.filter((p) => matches(p.name, q));
+  const total = f.items.length + f.bags.length + pl.length;
+  if (!total) {
+    if (paths.has(low(pq))) { const p = topPlace(d, pq); if (p) return placeView(d, p); }
+    return { text: "Не нашёл «" + esc(q) + "».", kb: kbd([[btn("➕ Добавить «" + q + "»", "aq")]]), state: { k: "q", q } };
   }
-  let s = "";
-  if (f.bags.length) s += f.bags.map((b) => "🎒 <b>" + esc(b.name) + "</b> — " + esc(bagWhere(b))).join("\n") + "\n";
-  if (placeHits.length) s += placeHits.map((p) => "📍 <b>" + esc(p.name) + "</b>").join("\n") + "\n";
-  const list = f.items.slice(0, 30);
-  s += list.map((i) => "• <b>" + esc(i.name) + "</b> — " + esc(itemWhere(d, i)) + (i.missing ? " ⚠" : "")).join("\n");
-  if (f.items.length > 30) s += "\n…и ещё " + (f.items.length - 30) + ". Напиши точнее.";
-  return { text: s.trim() };
+  if (total === 1) return f.items.length ? itemCard(d, f.items[0]) : f.bags.length ? bagView(d, f.bags[0]) : placeView(d, pl[0]);
+  const rows = pl.map((p) => [btn("📍 " + p.name, "p:" + p.id)])
+    .concat(f.bags.map((b) => [btn("🎒 " + b.name + " · " + bagWhere(b), "b:" + b.id)]))
+    .concat(f.items.slice(0, 30).map((i) => [btn((i.missing ? "⚠ " : "") + i.name + " · " + itemWhere(d, i).replace(/^в «[^»]*» \(/, "🎒 ").replace(/\)$/, ""), "i:" + i.id)]));
+  return { text: "🔎 «" + esc(q) + "» — нашёл " + total + (f.items.length > 30 ? ". Показал первые 30, напиши точнее." : ""), kb: kbd(rows) };
 }
 
-// ---------- callbacks ----------
-// t:<i|b>:<id>   — picked a target for the command on the last line
-// d:<p|b>:<id>   — picked a destination for the command on the last line
-// new            — confirm creating a new place for the command on the last line
-// m:<i|b>:<id>   — "Переложить" under a search result → show destinations
-// md:<i|b>:<id>:<p|b>:<did> — move chosen from that list
-export function runCallback(d, data, msgText) {
-  const cmd = msgText.includes(CMD_MARK.trim()) ? clean(msgText.slice(msgText.lastIndexOf(CMD_MARK.trim()) + CMD_MARK.trim().length)) : "";
+// ---------- actions that change data ----------
+function doMove(d, kind, id, dest, note) {
+  const t = targetOf(d, kind, id);
+  if (!t) return { text: "Не нашёл — может, уже удалено." };
+  if (kind === "b") {
+    if (dest.in) return { text: "Сумку можно переложить только в место." };
+    if (!moveBag(d, t, dest.place, note)) return bagView(d, t, 0, "Уже там.");
+    return Object.assign(bagView(d, t, 0, "✅ Переложил сумку → " + esc(dest.place)), { change: "Бот: " + t.name + " → " + dest.place });
+  }
+  if (dest.in === t.id) return { text: "Нельзя положить вещь саму в себя." };
+  if (!moveItem(d, t, dest, note)) return itemCard(d, t, "Уже там.");
+  return Object.assign(itemCard(d, t, "✅ Переложил"), { change: "Бот: " + t.name + " → " + labelFor(d, dest) });
+}
+function doAdd(d, names, dest, note) {
+  const added = names.map((n) => addItem(d, n, dest));
+  if (note) added.forEach((it) => { it.log[0].note = note; });
+  const head = "➕ Добавил: " + added.map((i) => "<b>" + esc(i.name) + "</b>").join(", ") + "\n→ " + esc(labelFor(d, dest));
+  const view = dest.in ? bagView(d, bagById(d, dest.in), 0, head) : added.length === 1 ? itemCard(d, added[0], "➕ Добавил") : placeView(d, topPlace(d, dest.place), 0, head);
+  return Object.assign(view, { change: "Бот: добавлено " + names.join(", ") });
+}
+function doSend(d, b, place) {
+  if (b.location === TRANSIT && b.dest === place) return bagView(d, b, 0, "Уже едет туда.");
+  const t = Date.now();
+  b.log = addLog(b.log, { t, from: b.location || "", to: TRANSIT, note: "→ " + place });
+  b.location = TRANSIT; b.dest = place; b._t = t;
+  return Object.assign(bagView(d, b, 0, "🚚 Отправил → " + esc(place)), { change: "Бот: " + b.name + " отправлена → " + place });
+}
+function doReceive(d, b) {
+  if (b.location !== TRANSIT) return bagView(d, b, 0, "Сумка не в пути.");
+  if (!b.dest) return Object.assign(destPicker(d, "b", b.id, "Куда приехала <b>" + esc(b.name) + "</b>?"));
+  const to = b.dest, t = Date.now();
+  b.log = addLog(b.log, { t, from: b.location, to, note: "принял" });
+  b.location = to; b.dest = null; b._t = t;
+  return Object.assign(bagView(d, b, 0, "✅ Принял в " + esc(to)), { change: "Бот: " + b.name + " принята в " + to });
+}
+const splitNames = (s) => s.split(",").map(clean).filter(Boolean);
+
+// ---------- text input ----------
+const HELP =
+  "<b>Колчан</b> — где что лежит.\n\n" +
+  "Кнопки внизу — меню. Можно просто написать название: найду вещь, сумку или место.\n\n" +
+  "Быстрые команды текстом:\n" +
+  "<code>+ Маска Smith → Дача</code> — добавить (несколько через запятую)\n" +
+  "<code>маска → Сочи</code> — переложить\n" +
+  "<code>маска → Дача // в стирке</code> — с заметкой";
+
+const ARROW = /\s*(?:→|->|=>|—>|>>)\s*/;
+export function onText(d, text, reply) {
+  const t = clean(text);
+  // menu buttons first
+  if (/^\/(start|help|menu)/.test(t)) return { text: HELP, menu: true };
+  if (t === "🔎 Найти") return { text: st({ k: "find" }) + "Что ищешь? Напиши название вещи, сумки или места.", force: "Например: маска" };
+  if (t === "➕ Добавить") return { text: st({ k: "add" }) + "Что добавить? Несколько вещей — через запятую.", force: "Например: Маска Smith" };
+  if (t === "⇄ Переложить") return { text: st({ k: "mv" }) + "Что переложить? Напиши название вещи или сумки.", force: "Например: маска torch" };
+  if (t === "📍 Места" || /^\/places/.test(t)) return placesList(d);
+  if (t === "🎒 Сумки" || /^\/bags/.test(t)) return bagsList(d);
+  if (t === "🚚 В пути") return transitList(d);
+  if (t === "🕓 История") return historyView(d);
+
+  // answers to the bot's questions
+  const s = reply ? readState(reply) : null;
+  if (s && s.k === "add") {
+    const names = splitNames(t);
+    if (!names.length) return { text: "Не вижу названия." };
+    if (s.d) { const [k, id] = s.d.split(":"); const dest = destFromCode(d, k, id); if (dest) return doAdd(d, names, dest); }
+    return addPicker(d, names);
+  }
+  if (s && s.k === "addnp") { const name = clean(t.replace(/\//g, " ")); if (!name) return { text: "Не вижу названия." }; ensurePlace(d, name); return doAdd(d, s.n || [], { place: topPlace(d, name).name }); }
+  if (s && s.k === "np") {
+    const name = clean(t.replace(/\//g, " ")); if (!name) return { text: "Не вижу названия." };
+    ensurePlace(d, name);
+    if (s.t) return doMove(d, s.t, s.id, { place: topPlace(d, name).name });
+    return Object.assign(placeView(d, topPlace(d, name), 0, "📍 Добавил место"), { change: "Бот: новое место " + name });
+  }
+  if (s && s.k === "mv") {
+    const f = findThings(d, t);
+    const all = f.items.map((o) => ["i", o]).concat(f.bags.map((o) => ["b", o]));
+    if (!all.length) return { text: "Не нашёл «" + esc(t) + "»." };
+    if (all.length === 1) return destPicker(d, all[0][0], all[0][1].id);
+    return { text: "Что именно переложить?", kb: kbd(all.slice(0, 30).map(([k, o]) => [btn((k === "b" ? "🎒 " : "") + o.name + " · " + (k === "b" ? bagWhere(o) : itemWhere(d, o)), "mv:" + k + ":" + o.id)])) };
+  }
+
+  // quick text commands
+  let cmd = t, note = "";
+  const ni = cmd.indexOf("//");
+  if (ni >= 0) { note = clean(cmd.slice(ni + 2)); cmd = clean(cmd.slice(0, ni)); }
+  const arrow = cmd.match(ARROW);
+  const what = clean(arrow ? cmd.slice(0, arrow.index) : cmd);
+  const whereText = arrow ? clean(cmd.slice(arrow.index + arrow[0].length)) : "";
+  if (/^\+/.test(what)) {
+    const names = splitNames(what.replace(/^\+\s*/, ""));
+    if (!names.length) return { text: "Напиши, что добавить." };
+    if (!whereText) return addPicker(d, names);
+    const dest = resolveDest(d, whereText);
+    if (dest.in || dest.place) return doAdd(d, names, dest, note);
+    if (dest.unknown) return { text: st({ k: "add", n: names, np: dest.unknown, note }) + "Места «" + esc(dest.unknown) + "» нет. Создать?", kb: kbd([[btn("Создать «" + dest.unknown + "»", "anew")], [btn("Выбрать из списка", "apick")]]) };
+    return addPicker(d, names);
+  }
+  if (arrow && what) {
+    const f = findThings(d, what);
+    const all = f.items.map((o) => ["i", o]).concat(f.bags.map((o) => ["b", o]));
+    if (!all.length) return { text: "Не нашёл «" + esc(what) + "».", kb: kbd([[btn("➕ Добавить «" + what + "»", "aq")]]), state: { k: "q", q: what } };
+    const dest = whereText ? resolveDest(d, whereText) : null;
+    if (all.length > 1) {
+      return { text: st({ k: "mvto", w: whereText, note }) + "Что именно переложить" + (whereText ? " → " + esc(whereText) : "") + "?", kb: kbd(all.slice(0, 30).map(([k, o]) => [btn((k === "b" ? "🎒 " : "") + o.name + " · " + (k === "b" ? bagWhere(o) : itemWhere(d, o)), "mt:" + k + ":" + o.id)])) };
+    }
+    return moveTo(d, all[0][0], all[0][1].id, whereText, dest, note);
+  }
+  return searchView(d, t);
+}
+function moveTo(d, kind, id, whereText, dest, note) {
+  if (!dest) return destPicker(d, kind, id);
+  if (dest.in || dest.place) return doMove(d, kind, id, dest, note);
+  if (dest.unknown) {
+    const t = targetOf(d, kind, id);
+    return { text: st({ k: "mvnew", t: kind, id, p: dest.unknown, note }) + "<b>" + esc(t.name) + "</b>: места «" + esc(dest.unknown) + "» нет. Создать?", kb: kbd([[btn("Создать «" + dest.unknown + "»", "mnew")], [btn("Выбрать из списка", "mv:" + kind + ":" + id)]]) };
+  }
+  return destPicker(d, kind, id, "Уточни, куда: «" + esc(whereText) + "»");
+}
+
+// ---------- button presses ----------
+// returns a view; .ask = send a new question (force reply) instead of editing
+export function onButton(d, data, msg) {
   const p = data.split(":");
-  if (p[0] === "m") {
-    const o = p[1] === "b" ? bagById(d, p[2]) : d.items.find((i) => i.id === p[2]);
-    if (!o) return { text: "Не нашёл — может, уже удалено." };
-    const rows = destButtons(p[1] === "b" ? { places: d.places, bags: [] } : d, "md:" + p[1] + ":" + p[2] + ":");
-    return { text: "Куда переложить <b>" + esc(o.name) + "</b>?", kb: kbd(rows), edit: true };
+  const s = readState(msg) || {};
+  switch (p[0]) {
+    case "noop": return null;
+    case "P": return placesList(d);
+    case "B": return bagsList(d);
+    case "p": { const pl = d.places.find((x) => x.id === p[1]); return pl ? placeView(d, pl, +p[2] || 0) : placesList(d); }
+    case "b": { const b = bagById(d, p[1]); return b ? bagView(d, b, +p[2] || 0) : bagsList(d); }
+    case "i": { const it = d.items.find((x) => x.id === p[1]); return it ? itemCard(d, it) : { text: "Не нашёл — может, уже удалено." }; }
+    case "mv": return targetOf(d, p[1], p[2]) ? destPicker(d, p[1], p[2]) : { text: "Не нашёл — может, уже удалено." };
+    case "md": { const dest = destFromCode(d, p[3], p[4]); return dest ? doMove(d, p[1], p[2], dest) : { text: "Не нашёл это место." }; }
+    case "mt": return targetOf(d, p[1], p[2]) ? moveTo(d, p[1], p[2], s.w || "", s.w ? resolveDest(d, s.w) : null, s.note) : { text: "Не нашёл — может, уже удалено." };
+    case "mnew": { if (!s.p) return null; ensurePlace(d, s.p); return doMove(d, s.t, s.id, { place: s.p }, s.note); }
+    case "nw": { const t = targetOf(d, p[1], p[2]); if (!t) return null; return { ask: true, text: st({ k: "np", t: p[1], id: p[2] }) + "Как назвать новое место для <b>" + esc(t.name) + "</b>?", force: "Например: Гараж" }; }
+    case "npl": return { ask: true, text: st({ k: "np" }) + "Как назвать новое место?", force: "Например: Гараж" };
+    case "ad": { const t = p[1] === "p" ? d.places.find((x) => x.id === p[2]) : bagById(d, p[2]); if (!t) return null; return { ask: true, text: st({ k: "add", d: p[1] + ":" + p[2] }) + "Что положить в «" + esc(t.name) + "»? Несколько — через запятую.", force: "Например: Маска Smith" }; }
+    case "aq": return s.q ? addPicker(d, [s.q]) : null;
+    case "ap": { const dest = destFromCode(d, p[1], p[2]); return dest && s.n ? doAdd(d, s.n, dest, s.note) : { text: "Не получилось — начни заново." }; }
+    case "anp": return s.n ? { ask: true, text: st({ k: "addnp", n: s.n }) + "Как назвать новое место?", force: "Например: Гараж" } : null;
+    case "anew": { if (!s.np || !s.n) return null; ensurePlace(d, s.np); return doAdd(d, s.n, { place: s.np }, s.note); }
+    case "apick": return s.n ? addPicker(d, s.n) : null;
+    case "snd": {
+      const b = bagById(d, p[1]); if (!b) return null;
+      const rows = pairs(sortedPlaces(d).filter((x) => x.name !== TRANSIT && x.name !== b.location).map((x) => btn("📍 " + x.name, "sd:" + b.id + ":" + x.id)));
+      rows.push([btn("⬅ Назад", "b:" + b.id)]);
+      return { text: "Куда отправить <b>" + esc(b.name) + "</b>? Пока едет, она будет в «" + TRANSIT + "».", kb: kbd(rows) };
+    }
+    case "sd": { const b = bagById(d, p[1]), pl = d.places.find((x) => x.id === p[2]); return b && pl ? doSend(d, b, pl.name) : null; }
+    case "rc": { const b = bagById(d, p[1]); return b ? doReceive(d, b) : null; }
   }
-  if (p[0] === "md") {
-    const target = p[1] === "b" ? { kind: "b", o: bagById(d, p[2]) } : { kind: "i", o: d.items.find((i) => i.id === p[2]) };
-    const dest = destFromCode(d, p[3], p[4]);
-    if (!target.o || !dest) return { text: "Не нашёл — может, уже удалено.", edit: true };
-    return Object.assign(run(d, target.o.name + " → x", { target, dest }), { edit: true });
-  }
-  if (!cmd) return { text: "Не понял, к чему эта кнопка. Напиши команду ещё раз.", edit: true };
-  const opt = {};
-  if (p[0] === "t") { const o = p[1] === "b" ? bagById(d, p[2]) : d.items.find((i) => i.id === p[2]); if (!o) return { text: "Не нашёл — может, уже удалено.", edit: true }; opt.target = { kind: p[1], o }; }
-  if (p[0] === "d") { opt.dest = destFromCode(d, p[1], p[2]); if (!opt.dest) return { text: "Не нашёл это место.", edit: true }; }
-  if (p[0] === "new") opt.allowNew = true;
-  return Object.assign(run(d, cmd, opt), { edit: true });
+  return null;
 }
 
 // ---------- Telegram ----------
@@ -351,7 +472,6 @@ async function tg(env, method, body) {
   const r = await fetch("https://api.telegram.org/bot" + env.BOT_TOKEN + "/" + method, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   return r.json();
 }
-// Telegram allows 4096 characters per message: split long lists by lines
 function chunks(text, max = 3900) {
   const out = []; let cur = "";
   for (const line of text.split("\n")) {
@@ -361,24 +481,29 @@ function chunks(text, max = 3900) {
   if (cur) out.push(cur);
   return out;
 }
-async function reply(env, chatId, res, editMsgId) {
-  const parts = chunks(res.text);
-  for (const extra of parts.slice(0, -1)) {
-    if (editMsgId) { await tg(env, "editMessageText", { chat_id: chatId, message_id: editMsgId, text: extra, parse_mode: "HTML" }); editMsgId = null; }
-    else await tg(env, "sendMessage", { chat_id: chatId, text: extra, parse_mode: "HTML", disable_web_page_preview: true });
+async function send(env, chatId, res, editId) {
+  let text = res.text;
+  if (res.state) text = st(res.state) + text;
+  const parts = chunks(text);
+  const base = { chat_id: chatId, parse_mode: "HTML", link_preview_options: { is_disabled: true }, disable_web_page_preview: true };
+  for (const extra of parts.slice(0, -1)) await tg(env, "sendMessage", Object.assign({}, base, { text: extra }));
+  const body = Object.assign({}, base, { text: parts[parts.length - 1] || "…" });
+  if (res.force) body.reply_markup = { force_reply: true, input_field_placeholder: res.force };
+  else if (res.menu) body.reply_markup = MENU;
+  else if (res.kb) body.reply_markup = res.kb;
+  if (editId && !res.force && !res.menu && parts.length === 1) {
+    const r = await tg(env, "editMessageText", Object.assign({ message_id: editId }, body));
+    if (r.ok || /not modified/.test(r.description || "")) return;
   }
-  const body = { chat_id: chatId, text: parts[parts.length - 1] || "…", parse_mode: "HTML", disable_web_page_preview: true };
-  if (res.kb) body.reply_markup = res.kb;
-  if (editMsgId) { body.message_id = editMsgId; const r = await tg(env, "editMessageText", body); if (r.ok) return; delete body.message_id; }
   await tg(env, "sendMessage", body);
 }
 
-// load → run → save, retrying once if someone (the phone) wrote in between
+// load → run → save, retrying if someone (the phone) wrote in between
 async function transact(env, fn) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data, sha } = await load(env);
     const res = fn(data);
-    if (!res.change) return res;
+    if (!res || !res.change) return res;
     try { await save(env, data, sha, res.change); return res; }
     catch (e) { if ((e.status === 409 || e.status === 422) && attempt < 2) continue; throw e; }
   }
@@ -388,26 +513,24 @@ async function handleUpdate(env, u) {
   const from = (u.message && u.message.from) || (u.callback_query && u.callback_query.from);
   if (!from) return;
   const chatId = u.message ? u.message.chat.id : u.callback_query.message.chat.id;
-  if (!env.OWNER_ID) {
-    await reply(env, chatId, { text: "Твой Telegram ID: <code>" + from.id + "</code>\nВпиши его в переменную OWNER_ID в настройках Worker." });
-    return;
-  }
+  if (!env.OWNER_ID) { await send(env, chatId, { text: "Твой Telegram ID: <code>" + from.id + "</code>\nВпиши его в переменную OWNER_ID в настройках Worker." }); return; }
   if (String(from.id) !== String(env.OWNER_ID)) return;   // чужим не отвечаем
   try {
     if (u.message) {
-      const text = u.message.text || u.message.caption || "";
-      if (!text) { await reply(env, chatId, { text: "Пока понимаю только текст." }); return; }
-      const res = await transact(env, (d) => run(d, text));
-      await reply(env, chatId, res);
+      const m = u.message;
+      const text = m.text || m.caption || "";
+      if (!text) { await send(env, chatId, { text: "Пока понимаю только текст." }); return; }
+      const res = await transact(env, (d) => onText(d, text, m.reply_to_message));
+      if (res) await send(env, chatId, res);
     } else {
       const cq = u.callback_query;
       await tg(env, "answerCallbackQuery", { callback_query_id: cq.id });
-      const res = await transact(env, (d) => runCallback(d, cq.data || "", cq.message.text || ""));
-      await reply(env, chatId, res, res.edit ? cq.message.message_id : null);
+      const res = await transact(env, (d) => onButton(d, cq.data || "", cq.message));
+      if (res) await send(env, chatId, res, res.ask ? null : cq.message.message_id);
     }
   } catch (e) {
     const why = e.status === 401 ? "токен GitHub не подходит или истёк" : e.status === 404 || e.status === 403 ? "нет доступа к " + env.REPO + " (проверь REPO и права токена)" : String(e.message || e);
-    await reply(env, chatId, { text: "⚠ Не получилось: " + esc(why) });
+    await send(env, chatId, { text: "⚠ Не получилось: " + esc(why) });
   }
 }
 
@@ -417,7 +540,7 @@ export default {
     if (url.pathname === "/setup") {
       if (!env.HOOK_SECRET || url.searchParams.get("key") !== env.HOOK_SECRET) return new Response("Неверный key", { status: 403 });
       const hook = await tg(env, "setWebhook", { url: url.origin + "/tg", secret_token: env.HOOK_SECRET, allowed_updates: ["message", "callback_query"], drop_pending_updates: true });
-      await tg(env, "setMyCommands", { commands: [{ command: "places", description: "Места" }, { command: "bags", description: "Сумки" }, { command: "help", description: "Как пользоваться" }] });
+      await tg(env, "setMyCommands", { commands: [{ command: "menu", description: "Меню" }, { command: "places", description: "Места" }, { command: "bags", description: "Сумки" }] });
       const me = await tg(env, "getMe", {});
       return new Response((hook.ok ? "Готово! Бот @" + (me.result && me.result.username) + " подключён. Напиши ему /start." : "Ошибка: " + JSON.stringify(hook)) + "\n", { headers: { "Content-Type": "text/plain; charset=utf-8" } });
     }

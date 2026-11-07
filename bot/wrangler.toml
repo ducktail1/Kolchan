@@ -1,0 +1,5 @@
+name = "kolchan-bot"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+# переменные (REPO, OWNER_ID) и секреты задаются в панели Cloudflare и не затираются при деплое
+keep_vars = true

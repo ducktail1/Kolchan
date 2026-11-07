@@ -149,7 +149,9 @@
 `;
   let mode = "in";
   function setState(text, bad) { const el = $("acc-state"); if (el) { el.textContent = text || ""; el.className = bad ? "err" : "note"; el.hidden = !text; } const b = $("acc-open"); if (b && session) b.textContent = bad ? "Аккаунт ⚠" : "Аккаунт"; }
+  window.__kolchanAccount = () => (session ? { email: session.user.email || "" } : null);
   function paint() {
+    if (window.__kolchanPaintAva) window.__kolchanPaintAva();
     const b = $("acc-open"); if (!b) return;
     b.textContent = session ? (lastErr ? "Аккаунт ⚠" : "Аккаунт") : "Войти";
     $("acc-out").hidden = !!session; $("acc-in").hidden = !session;

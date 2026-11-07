@@ -140,6 +140,14 @@
   let tgPend = null, tgTimer = null;
   const randCode = () => { const a = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", r = new Uint8Array(32); crypto.getRandomValues(r); return [...r].map(x => a[x % a.length]).join(""); };
   const tgLink = (p) => "https://t.me/" + (CFG.tgBot || "") + "?start=login_" + p.code + (p.mode === "phone" ? "_p" : "");
+  // on a phone go straight into the Telegram app (tg://): a t.me link from the installed app opens an
+  // in-app browser that stays white after the hand-off and has to be closed with «Готово»
+  const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const tgApp = (p) => "tg://resolve?domain=" + (CFG.tgBot || "") + "&start=login_" + p.code + (p.mode === "phone" ? "_p" : "");
+  function openTg(p) {
+    if (!mobile) { const w = window.open(tgLink(p), "_blank"); if (!w) location.href = tgLink(p); return; }
+    location.href = tgApp(p);   // no Telegram app → the wait window has a web link
+  }
   function waitUi(on) {
     const sh = $("acc-bg"); if (!sh) return;
     $("acc-wait").hidden = !on;
@@ -149,14 +157,14 @@
     if (!ready || !CFG.tgBot) return;
     tgPend = { code: randCode(), mode, link: !!link, t: Date.now() };
     // open Telegram right away, while the tap still counts (otherwise the browser may block it)
-    const w = window.open(tgLink(tgPend), "_blank");
+    openTg(tgPend);
     await K.put("meta", Object.assign({ key: "tgPending" }, tgPend));
     $("acc-wait-t").textContent = link ? "Привяжи Telegram" : mode === "phone" ? "Подтверди номер в Telegram" : "Подтверди вход в Telegram";
     $("acc-wait-n").textContent = "В боте @" + CFG.tgBot + " нажми «Войти в Колчан»" + (mode === "phone" ? ", потом «📱 Поделиться номером»" : "") + " и вернись сюда — дальше всё произойдёт само.";
-    $("acc-wait-open").href = tgLink(tgPend);
+    $("acc-wait-open").href = mobile ? tgApp(tgPend) : tgLink(tgPend);
+    $("acc-wait-web").href = tgLink(tgPend); $("acc-wait-web").hidden = !mobile;
     $("acc-wait-err").hidden = true;
     waitUi(true);
-    if (!w) location.href = tgLink(tgPend);
     tgLoop();
   }
   async function tgStop(cancel) {
@@ -311,6 +319,7 @@
         '<div style="font-size:40px">✈️</div><b id="acc-wait-t">Подтверди вход в Telegram</b>' +
         '<div class="note" id="acc-wait-n"></div>' +
         '<a class="primary" id="acc-wait-open" href="#" target="_blank" rel="noopener" style="display:block;text-decoration:none;padding:12px;border-radius:12px;background:var(--accent);color:var(--accent-ink);font-weight:600">Открыть Telegram</a>' +
+        '<a id="acc-wait-web" href="#" target="_blank" rel="noopener" class="note" hidden>Нет приложения Telegram? Открыть в браузере</a>' +
         '<div class="err" id="acc-wait-err" hidden></div>' +
         '<button type="button" id="acc-wait-cancel">Отмена</button>' +
       '</div>' +
@@ -388,7 +397,7 @@
     const tp = await K.get("meta", "tgPending");
     if (ready && tp && tp.code && Date.now() - tp.t < 10 * 60000) {
       tgPend = { code: tp.code, mode: tp.mode, link: tp.link, t: tp.t };
-      $("acc-wait-open").href = tgLink(tgPend); $("acc-wait-t").textContent = "Жду подтверждения из Telegram"; $("acc-wait-n").textContent = "Если уже нажал «Войти в Колчан» в боте — вход выполнится через пару секунд.";
+      $("acc-wait-open").href = mobile ? tgApp(tgPend) : tgLink(tgPend); $("acc-wait-web").href = tgLink(tgPend); $("acc-wait-web").hidden = !mobile; $("acc-wait-t").textContent = "Жду подтверждения из Telegram"; $("acc-wait-n").textContent = "Если уже нажал «Войти в Колчан» в боте — вход выполнится через пару секунд.";
       waitUi(true); tgPoll();
     }
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { syncNow(false); if (tgPend) tgPoll(); } });

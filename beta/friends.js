@@ -62,6 +62,12 @@ header .tt .tsub .qname.nofit { display: none; }
 header .tt .tsub .count { font-size: 12px; }
 header .tt .tsub .qname { font-size: 12px; }
 header .tt .tsub .qname:not([hidden])::before { content: "· "; }
+/* «Данные»: backup as its own block, like the sync block */
+.dblock { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex !important; flex-direction: column; gap: 8px !important; }
+.dblock .cs-t { font-weight: 600; }
+.dblock .row2 { display: flex; gap: 8px; }
+.dblock .row2 > button { flex: 1; }
+.vh-file { position: absolute !important; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
 /* frosted strip under the bottom buttons: the list blurs as it slides under them */
 .fab-blur { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; pointer-events: none;
   height: calc(env(safe-area-inset-bottom, 0px) + 96px);
@@ -195,6 +201,22 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
     const syncBlur = () => { const a = $("add"); fb2.hidden = !a || a.hidden; };
     if ($("add")) new MutationObserver(syncBlur).observe($("add"), { attributes: true, attributeFilter: ["hidden"] });
     syncBlur();
+    // «Данные»: «Резервная копия» block — last export, «Выгрузить файл» and «Загрузить файл» buttons
+    const dbtns = $("data-bg") && $("data-bg").querySelector(".dataBtns");
+    if (dbtns && $("d-import")) {
+      const inst = [...dbtns.children].find(x => x.tagName === "BUTTON" && /Домой/.test(x.textContent));
+      const inp = $("d-import"), lbl = inp.closest("label"), ex = $("d-export");
+      inp.classList.add("vh-file"); dbtns.parentElement.appendChild(inp); if (lbl) lbl.remove();
+      dbtns.textContent = ""; dbtns.classList.add("dblock");
+      const t = document.createElement("div"); t.className = "cs-t"; t.textContent = "Резервная копия";
+      const imp = document.createElement("button"); imp.type = "button"; imp.id = "d-import-btn"; imp.textContent = "Загрузить файл";
+      imp.onclick = () => inp.click();
+      ex.classList.remove("primary"); ex.textContent = "Выгрузить файл";
+      const row = document.createElement("div"); row.className = "row2"; row.append(ex, imp);
+      const hint = document.createElement("div"); hint.className = "note"; hint.textContent = "Выгрузка сохраняет файл с базой. Загрузка заменит всю базу на этом телефоне — перед заменой спрошу.";
+      dbtns.append(t, $("d-last"), row, hint);
+      if (inst) { const nt = $("data-bg").querySelector(".notice"); nt.parentElement.insertBefore(inst, nt); }
+    }
     const right = $("data-open").parentElement;
     // the counter and the quiver name go under the centred title
     const tt = document.querySelector("header .tt");

@@ -8,21 +8,44 @@
 
   const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   const done = (t) => new Promise((res, rej) => { t.oncomplete = res; t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
-  const dbp = new Promise((res, rej) => {
-    const r = indexedDB.open(DB_NAME, DB_VER);
-    r.onupgradeneeded = () => {
-      const d = r.result;
-      STORES.forEach(s => { if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: s === "meta" ? "key" : "id" }); });
-    };
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
+  // IndexedDB, with an in-memory fallback when the browser blocks it
+  // (some embedded views and private modes): the app still works, data lives until reload.
+  const mem = Object.fromEntries(STORES.map(s => [s, new Map()]));
+  const keyOf = (s, o) => s === "meta" ? o.key : o.id;
+  const PREVIEW = !!window.__KOLCHAN_PREVIEW;
+  if (PREVIEW) { try { indexedDB.deleteDatabase(DB_NAME); } catch (e) {} }
+  const dbp = PREVIEW ? Promise.resolve(null) : new Promise((res) => {
+    let settled = false;
+    const fin = (v) => { if (!settled) { settled = true; res(v); } };
+    setTimeout(() => fin(null), 2000);
+    try {
+      const r = indexedDB.open(DB_NAME, DB_VER);
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        STORES.forEach(s => { if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: s === "meta" ? "key" : "id" }); });
+      };
+      r.onsuccess = async () => {
+        const d = r.result;
+        try { const t = d.transaction("meta", "readwrite"); t.objectStore("meta").put({ key: "probe", t: Date.now() }); await done(t); fin(d); }
+        catch (e) { fin(null); }
+      };
+      r.onerror = () => fin(null);
+      r.onblocked = () => fin(null);
+    } catch (e) { fin(null); }
   });
-  async function all(s) { const d = await dbp; return req(d.transaction(s).objectStore(s).getAll()); }
-  async function get(s, k) { const d = await dbp; return req(d.transaction(s).objectStore(s).get(k)); }
-  async function put(s, o) { const d = await dbp; const t = d.transaction(s, "readwrite"); t.objectStore(s).put(o); await done(t); }
-  async function del(s, k) { const d = await dbp; const t = d.transaction(s, "readwrite"); t.objectStore(s).delete(k); await done(t); }
+  dbp.then(d => { window.__kolchanMemory = !d && !PREVIEW; });
+  async function all(s) { const d = await dbp; if (!d) return [...mem[s].values()]; return req(d.transaction(s).objectStore(s).getAll()); }
+  async function get(s, k) { const d = await dbp; if (!d) return mem[s].get(k); return req(d.transaction(s).objectStore(s).get(k)); }
+  async function put(s, o) { const d = await dbp; if (!d) { mem[s].set(keyOf(s, o), o); return; } const t = d.transaction(s, "readwrite"); t.objectStore(s).put(o); await done(t); }
+  async function del(s, k) { const d = await dbp; if (!d) { mem[s].delete(k); return; } const t = d.transaction(s, "readwrite"); t.objectStore(s).delete(k); await done(t); }
   async function replaceAll(data) {
     const d = await dbp;
+    if (!d) {
+      ["places", "bags", "items", "photos"].forEach(s => mem[s].clear());
+      DATA.forEach(s => (data[s] || []).forEach(o => { if (o && o.id) mem[s].set(o.id, o); }));
+      (data.photos || []).forEach(o => mem.photos.set(o.id, o));
+      return;
+    }
     const t = d.transaction(["places", "bags", "items", "photos"], "readwrite");
     ["places", "bags", "items", "photos"].forEach(s => t.objectStore(s).clear());
     DATA.forEach(s => (data[s] || []).forEach(o => { if (o && o.id) t.objectStore(s).put(o); }));
@@ -31,6 +54,7 @@
   }
   async function replaceData(data) {
     const d = await dbp;
+    if (!d) { DATA.forEach(s => { mem[s].clear(); (data[s] || []).forEach(o => { if (o && o.id) mem[s].set(o.id, o); }); }); return; }
     const t = d.transaction(DATA, "readwrite");
     DATA.forEach(s => { t.objectStore(s).clear(); (data[s] || []).forEach(o => { if (o && o.id) t.objectStore(s).put(o); }); });
     await done(t);
@@ -78,7 +102,8 @@
   };
   window.__kolchan = { all, get, put, replaceData, emit };
   function syncSoon() { if (window.__syncSoon) window.__syncSoon(); }
-  window.claude = { use: async (n) => { await ready; return n === "db" ? db : n === "assets" ? assets : null; } };
+  window.__store = { use: async (n) => { await ready; return n === "db" ? db : n === "assets" ? assets : null; } };
+  try { window.claude = window.__store; } catch (e) {}
 
   // ---------- data sheet: export / import ----------
   const $ = (id) => document.getElementById(id);
@@ -244,13 +269,15 @@
 
   document.addEventListener("DOMContentLoaded", async () => {
     const cfg = await cfgGet();
-    if ($("s-repo")) $("s-repo").value = (cfg && cfg.repo) || "ducktail1/kolchan-data";
+    if ($("s-repo")) $("s-repo").value = (cfg && cfg.repo) || "";
+    if ($("s-box") && cfg && cfg.token) $("s-box").open = true;
     if ($("s-token") && cfg && cfg.token) $("s-token").placeholder = "токен сохранён";
     const base = await K.get("meta", "syncBase");
     setState(cfg && cfg.token ? (base ? "Синхронизировано: " + fmt.format(new Date(base.t)) : "Ещё не синхронизировалось.") : "Синхронизация выключена: нет токена.");
     if ($("s-save")) $("s-save").onclick = async () => {
       const token = $("s-token").value.trim() || (cfg && cfg.token) || "";
-      const repo = $("s-repo").value.trim() || "ducktail1/kolchan-data";
+      const repo = $("s-repo").value.trim();
+      if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) { setState("Укажи репозиторий в виде логин/kolchan-data.", true); return; }
       await K.put("meta", { key: "sync", token, repo });
       $("s-token").value = ""; $("s-token").placeholder = token ? "токен сохранён" : "github_pat_…";
       syncNow(true);

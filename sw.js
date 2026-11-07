@@ -1,6 +1,6 @@
 // Offline cache for the app shell. Bump VERSION when files change.
-const VERSION = "1.2.0";
-const FILES = ["./", "index.html", "local.js", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
+const VERSION = "1.3.0";
+const FILES = ["./", "index.html", "local.js", "friends.js", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));

@@ -407,7 +407,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <h2>Данные</h2>
     <div class="note" id="d-stat"></div>
     <div class="note" id="d-last"></div>
-    <div class="note">Версия Колчана: <b>1.2.0</b></div>
+    <div class="note">Версия Колчана: <b>1.3.0</b></div>
     <div class="dataBtns">
       <button type="button" class="primary" id="d-export">Выгрузить файл</button>
       <label>Загрузить файл <span class="hint">заменит всю базу на этом телефоне</span>
@@ -419,20 +419,25 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       <div class="row2"><button type="button" id="d-confirm-no">Отмена</button><button type="button" class="danger" id="d-confirm-yes">Заменить базу</button></div>
     </div>
     <div class="ok" id="d-msg" hidden></div>
-    <h3>Синхронизация с GitHub</h3>
-    <div class="note" id="s-state"></div>
-    <label>Токен GitHub <span class="hint">хранится только на этом телефоне</span>
-      <input id="s-token" type="password" placeholder="github_pat_…" autocomplete="off">
-    </label>
-    <label>Репозиторий с базой
-      <input id="s-repo" type="text" placeholder="ducktail1/kolchan-data" autocomplete="off">
-    </label>
-    <div class="row2"><button type="button" id="s-save">Сохранить токен</button><button type="button" class="primary" id="s-now">Синхронизировать</button></div>
-    <div class="notice">База хранится на телефоне и сама синхронизируется с приватным репозиторием на GitHub, когда есть интернет. Выгрузка файлом осталась как запасной вариант.</div>
+    <details class="sync" id="s-box">
+      <summary>Синхронизация с GitHub (необязательно)</summary>
+      <div class="note">Для тех, кто хочет хранить копию базы в своём приватном репозитории GitHub. Без этого всё работает.</div>
+      <div class="note" id="s-state"></div>
+      <label>Токен GitHub <span class="hint">хранится только на этом телефоне</span>
+        <input id="s-token" type="password" placeholder="github_pat_…" autocomplete="off">
+      </label>
+      <label>Репозиторий с базой
+        <input id="s-repo" type="text" placeholder="логин/kolchan-data" autocomplete="off">
+      </label>
+      <div class="row2"><button type="button" id="s-save">Сохранить токен</button><button type="button" class="primary" id="s-now">Синхронизировать</button></div>
+    </details>
+    <div class="notice">База хранится только на этом телефоне. Время от времени нажимай «Выгрузить файл» и сохраняй копию в «Файлы» или iCloud — так ничего не потеряется, даже если сменишь телефон.</div>
     <div class="actions"><div class="right"><button type="button" id="d-close">Закрыть</button></div></div>
   </div>
 </div>
+<script>window.__KOLCHAN_VERSION = "1.3.0";</script>
 <script src="local.js"></script>
+<script src="friends.js"></script>
 
 <script>
 (function () {
@@ -1320,10 +1325,10 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 
   // ---------- data ----------
   (async () => {
-    if (!window.claude || !window.claude.use) { loaded = true; render(); setStatus("База открывается только на странице артефакта в Claude."); return; }
-    db = await window.claude.use("db");
+    if (!window.__store || !window.__store.use) { loaded = true; render(); setStatus("База открывается только на странице артефакта в Claude."); return; }
+    db = await window.__store.use("db");
     if (!db) { loaded = true; render(); setStatus("Не удалось подключиться к базе. Войди в аккаунт Claude и открой страницу заново."); return; }
-    window.claude.use("assets").then(a => { assets = a; }).catch(() => {});
+    window.__store.use("assets").then(a => { assets = a; }).catch(() => {});
     const timer = setTimeout(() => setStatus(loaded ? "Связи с базой нет, данные могут быть устаревшими." : "База пока не отвечает. Проверь интернет."), 10000);
     const onErr = (e) => { clearTimeout(timer); loaded = true; render(); setStatus(e && e.code === "revoked" ? "Доступ к базе закрыт." : "Не удалось загрузить базу. Обнови страницу позже."); };
     db.collection("places").orderBy("order").onSnapshot((snap) => {

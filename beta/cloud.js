@@ -216,8 +216,14 @@
 .acc-or::before, .acc-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .acc-prov { display: flex; flex-direction: column; gap: 8px; }
 .acc-prov button { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px; font-weight: 600; }
-.acc-prov button[disabled] { opacity: .5; }
-.acc-prov small { font-weight: 400; color: var(--muted); }
+.acc-prov button[disabled] { position: relative; overflow: hidden; opacity: 1; cursor: default; }
+.acc-prov button[disabled] .pl { opacity: .35; }
+/* «скоро»: чёрно-жёлтая лента наискосок через кнопку */
+.acc-prov button[disabled] { justify-content: flex-start; padding-left: 18px; }
+.acc-prov .soon { position: absolute; left: 52%; right: -12%; top: 50%; height: 20px; transform: translateY(-50%) rotate(-12deg);
+  background: repeating-linear-gradient(45deg, #151515 0 9px, #f5c400 9px 18px); box-shadow: 0 1px 3px rgba(0,0,0,.35);
+  display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.acc-prov .soon b { background: #151515; color: #f5c400; font: 700 11px/20px system-ui, sans-serif; letter-spacing: .18em; padding: 0 10px 0 12px; }
 .acc-me { display: flex; align-items: center; gap: 12px; }
 .acc-ava { width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-weight: 700; font-size: 18px; flex: none; }
 .acc-me b { display: block; overflow-wrap: anywhere; }
@@ -291,7 +297,9 @@
     dataBtn.parentElement.insertBefore(ab, dataBtn);
     const sh = document.createElement("div"); sh.className = "sheet-bg"; sh.id = "acc-bg"; sh.hidden = true;
     const prov = (CFG.providers || []);
-    const pbtn = (id, label, icon) => '<button type="button" data-p="' + id + '"' + (prov.includes(id) ? "" : " disabled") + '>' + icon + label + (prov.includes(id) ? "" : " <small>скоро</small>") + "</button>";
+    const pbtn = (id, label, icon) => prov.includes(id)
+      ? '<button type="button" data-p="' + id + '">' + icon + label + "</button>"
+      : '<button type="button" data-p="' + id + '" disabled aria-label="' + label + ' — скоро"><span class="pl">' + icon + label + '</span><span class="soon"><b>SOON</b></span></button>';
     sh.innerHTML = '<div class="sheet"><div class="gate-head"><div class="logo">Колчан <span class="beta-tag">β</span></div><p>Войди или зарегистрируйся — база будет храниться онлайн и одинаково на всех твоих устройствах.</p></div><h2>Аккаунт</h2>' +
       '<div id="acc-out">' +
         '<div class="note" style="margin-bottom:12px">Войди, чтобы база хранилась онлайн и была одинаковой на всех устройствах. Без входа всё работает как раньше — только на этом телефоне.</div>' +

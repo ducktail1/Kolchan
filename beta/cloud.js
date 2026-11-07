@@ -26,7 +26,9 @@
   }
   const authHeaders = () => ({ apikey: CFG.key, "Content-Type": "application/json" });
   async function signUp(email, password) {
-    const j = await api("/auth/v1/signup", { method: "POST", headers: authHeaders(), body: JSON.stringify({ email, password }) });
+    // the link in the confirmation e-mail brings the person back here and signs them in
+    const back = encodeURIComponent(location.origin + location.pathname);
+    const j = await api("/auth/v1/signup?redirect_to=" + back, { method: "POST", headers: authHeaders(), body: JSON.stringify({ email, password }) });
     if (j && j.access_token) { await saveSession(fromAuth(j)); return "in"; }
     return "confirm";   // the project asks to confirm the address by e-mail
   }
@@ -58,6 +60,9 @@
     const u = await api("/auth/v1/user", { headers: Object.assign(authHeaders(), { Authorization: "Bearer " + at }) });
     await saveSession({ access_token: at, refresh_token: rt, expires_at: exp ? exp * 1000 : Date.now() + 3600000, user: { id: u.id, email: u.email || "" } });
     return "ok";
+  }
+  async function resend(email) {
+    await api("/auth/v1/resend?redirect_to=" + encodeURIComponent(location.origin + location.pathname), { method: "POST", headers: authHeaders(), body: JSON.stringify({ type: "signup", email }) });
   }
   const oauthUrl = (provider) => CFG.url + "/auth/v1/authorize?provider=" + provider + "&redirect_to=" + encodeURIComponent(location.origin + location.pathname);
 
@@ -153,6 +158,10 @@
     $("acc-go").textContent = mode === "in" ? "Войти" : "Зарегистрироваться";
     $("acc-pass").autocomplete = mode === "in" ? "current-password" : "new-password";
     $("acc-pass2-wrap").hidden = mode !== "up";
+    const nt = document.querySelector("#data-bg .notice");
+    if (nt) nt.textContent = session
+      ? "База хранится онлайн в твоём аккаунте и на этом телефоне — с любого устройства после входа будет одно и то же. «Выгрузить файл» — дополнительная копия на всякий случай."
+      : "Пока ты не вошёл, база хранится только на этом телефоне. Войди в аккаунт, чтобы она хранилась онлайн, или время от времени нажимай «Выгрузить файл».";
   }
   function err(t) { const e = $("acc-err"); e.textContent = t || ""; e.hidden = !t; }
   const ruErr = (e) => {
@@ -186,6 +195,7 @@
           '<label>Пароль<input id="acc-pass" type="password" placeholder="минимум 6 символов"></label>' +
           '<label id="acc-pass2-wrap" hidden>Пароль ещё раз<input id="acc-pass2" type="password" autocomplete="new-password"></label>' +
           '<div class="err" id="acc-err" hidden></div>' +
+          '<button type="button" class="link" id="acc-resend" hidden>Отправить письмо ещё раз</button>' +
           '<button type="submit" class="primary" id="acc-go">Войти</button>' +
         '</form>' +
         '<div class="acc-or" style="margin:14px 0">или</div>' +
@@ -216,13 +226,21 @@
       if (mode === "up" && pass !== $("acc-pass2").value) { err("Пароли не совпадают."); return; }
       const go = $("acc-go"); go.disabled = true; err("");
       try {
-        if (mode === "up") { const r = await signUp(email, pass); if (r === "confirm") { err(""); $("acc-err").className = "ok"; $("acc-err").textContent = "Почти готово: открой письмо на " + email + " и подтверди адрес, потом войди."; $("acc-err").hidden = false; return; } }
+        if (mode === "up") { const r = await signUp(email, pass); if (r === "confirm") { err(""); $("acc-err").className = "ok"; $("acc-err").textContent = "Почти готово: открой письмо на " + email + " и нажми ссылку — вернёшься сюда уже в аккаунте."; $("acc-err").hidden = false; return; } }
         else await signIn(email, pass);
         $("acc-pass").value = ""; $("acc-pass2").value = "";
         paint(); syncNow(true);
-      } catch (ex) { $("acc-err").className = "err"; err(ruErr(ex)); }
+      } catch (ex) {
+        $("acc-err").className = "err"; err(ruErr(ex));
+        if ((ex.code || "") === "email_not_confirmed" || /not confirmed/i.test(ex.message || "")) $("acc-resend").hidden = false;
+      }
       finally { go.disabled = false; }
     });
+    $("acc-resend").onclick = async () => {
+      const email = $("acc-mail-in").value.trim();
+      try { await resend(email); $("acc-err").className = "ok"; $("acc-err").textContent = "Отправил письмо на " + email + ". Открой его и нажми ссылку — вернёшься сюда уже в аккаунте."; $("acc-err").hidden = false; $("acc-resend").hidden = true; }
+      catch (ex) { $("acc-err").className = "err"; err(ruErr(ex)); }
+    };
     $("acc-sync").onclick = () => syncNow(true);
     $("acc-logout").onclick = () => { $("acc-logout-confirm").hidden = false; };
     $("acc-logout-no").onclick = () => { $("acc-logout-confirm").hidden = true; };
@@ -238,7 +256,7 @@
     session = s && s.access_token ? { access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at, user: s.user } : null;
     paint();
     if (ready) {
-      try { const r = await takeRedirect(); if (r && r !== "ok") { open(); err(r); } } catch (e) { open(); err(ruErr(e)); }
+      try { const r = await takeRedirect(); if (r && r !== "ok") { open(); err(r); } else if (r === "ok") open(); } catch (e) { open(); err(ruErr(e)); }
       if (session) {
         const base = await K.get("meta", "cloudBase");
         setState(base && base.t ? "Синхронизировано: " + fmt.format(new Date(base.t)) : "");

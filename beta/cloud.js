@@ -219,11 +219,11 @@
 .acc-prov button[disabled] { position: relative; overflow: hidden; opacity: 1; cursor: default; }
 .acc-prov button[disabled] .pl { opacity: .35; }
 /* «скоро»: чёрно-жёлтая лента наискосок через кнопку */
-.acc-prov button[disabled] { justify-content: flex-start; padding-left: 18px; }
-.acc-prov .soon { position: absolute; left: 52%; right: -12%; top: 50%; height: 20px; transform: translateY(-50%) rotate(-12deg);
+.acc-prov button[disabled] { align-items: flex-start; padding-top: 5px; padding-bottom: 19px; }
+.acc-prov .soon { position: absolute; left: -6%; right: -6%; top: 77%; height: 16px; transform: translateY(-50%) rotate(-3deg);
   background: repeating-linear-gradient(45deg, #151515 0 9px, #f5c400 9px 18px); box-shadow: 0 1px 3px rgba(0,0,0,.35);
   display: flex; align-items: center; justify-content: center; pointer-events: none; }
-.acc-prov .soon b { background: #151515; color: #f5c400; font: 700 11px/20px system-ui, sans-serif; letter-spacing: .18em; padding: 0 10px 0 12px; }
+.acc-prov .soon b { background: #151515; color: #f5c400; font: 700 10px/16px system-ui, sans-serif; letter-spacing: .18em; padding: 0 10px 0 12px; }
 .acc-me { display: flex; align-items: center; gap: 12px; }
 .acc-ava { width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-weight: 700; font-size: 18px; flex: none; }
 .acc-me b { display: block; overflow-wrap: anywhere; }

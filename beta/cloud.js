@@ -1,4 +1,4 @@
-// Колчан (бета): аккаунт и онлайн-база в Supabase.
+// Колчан: аккаунт и онлайн-база в Supabase (в бете вход обязателен, в основном можно «Использовать локально»).
 // Телефон по-прежнему главный: всё лежит в IndexedDB и работает без сети,
 // а при входе база объединяется с облаком (те же правила, что у синхронизации с GitHub).
 (function () {
@@ -10,6 +10,9 @@
   const DATA = S.DATA;
   const fmt = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const ready = !!(CFG.url && CFG.key);
+  // beta: the account is required. Main app: the first screen offers sign-in / sign-up or «Использовать локально».
+  const BETA = !!CFG.beta;
+  let localOk = false;   // main app: the person chose to keep the base only on this phone
 
   // ---------- auth (Supabase GoTrue over plain fetch) ----------
   let session = null;   // { access_token, refresh_token, expires_at, user: { id, email } }
@@ -237,6 +240,9 @@
 .gate-head p { color: var(--muted); margin: 8px 0 0; }
 .cloud-sync { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .cloud-sync .cs-t { font-weight: 600; }
+.sheet-bg:not(.gate) #acc-local { display: none; }
+#acc-local { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line, rgba(127,127,127,.25)); display: flex; flex-direction: column; gap: 8px; text-align: center; }
+#acc-local button { padding: 12px; font-weight: 600; }
 .beta-tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--accent-ink); background: var(--accent); border-radius: 6px; padding: 2px 6px; margin-left: 6px; vertical-align: middle; }
 `;
   let mode = "in";
@@ -246,7 +252,7 @@
   // no session in the beta → the sign-in screen covers the app and cannot be closed
   function gate() {
     const sh = $("acc-bg"); if (!sh || !ready) return;
-    const on = !session;
+    const on = !session && !localOk;
     sh.classList.toggle("gate", on);
     if (on) sh.hidden = false;
     $("acc-close").parentElement.parentElement.hidden = on;
@@ -290,8 +296,8 @@
 
   document.addEventListener("DOMContentLoaded", async () => {
     const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
-    const h1 = document.querySelector("header h1"); if (h1) { const t = document.createElement("span"); t.className = "beta-tag"; t.textContent = "β"; h1.appendChild(t); }
-    const sbox = $("s-box"); if (sbox) sbox.hidden = true;   // GitHub sync is replaced by the account in the beta
+    const h1 = document.querySelector("header h1"); if (h1 && BETA) { const t = document.createElement("span"); t.className = "beta-tag"; t.textContent = "β"; h1.appendChild(t); }
+    const sbox = $("s-box"); if (sbox && BETA) sbox.hidden = true;   // GitHub sync is replaced by the account in the beta
     const dataBtn = $("data-open");
     const ab = document.createElement("button"); ab.type = "button"; ab.className = "link acc-btn"; ab.id = "acc-open"; ab.textContent = "Войти";
     dataBtn.parentElement.insertBefore(ab, dataBtn);
@@ -300,7 +306,7 @@
     const pbtn = (id, label, icon) => prov.includes(id)
       ? '<button type="button" data-p="' + id + '">' + icon + label + "</button>"
       : '<button type="button" data-p="' + id + '" disabled aria-label="' + label + ' — скоро"><span class="pl">' + icon + label + '</span><span class="soon"><b>SOON</b></span></button>';
-    sh.innerHTML = '<div class="sheet"><div class="gate-head"><div class="logo">Колчан <span class="beta-tag">β</span></div><p>Войди или зарегистрируйся — база будет храниться онлайн и одинаково на всех твоих устройствах.</p></div><h2>Аккаунт</h2>' +
+    sh.innerHTML = '<div class="sheet"><div class="gate-head"><div class="logo">Колчан' + (BETA ? ' <span class="beta-tag">β</span>' : "") + '</div><p>Войди или зарегистрируйся — база будет храниться онлайн и одинаково на всех твоих устройствах.</p></div><h2>Аккаунт</h2>' +
       '<div id="acc-out">' +
         '<div class="note" style="margin-bottom:12px">Войди, чтобы база хранилась онлайн и была одинаковой на всех устройствах. Без входа всё работает как раньше — только на этом телефоне.</div>' +
         '<div class="acc-tabs"><button type="button" id="acc-tab-in">Вход</button><button type="button" id="acc-tab-up">Регистрация</button></div>' +
@@ -314,6 +320,8 @@
         '</form>' +
         '<div class="acc-or" style="margin:14px 0">или</div>' +
         '<div class="acc-prov">' + pbtn("telegram", "Войти через Telegram", "✈️ ") + pbtn("google", "Google", "G ") + pbtn("yandex", "Яндекс ID", "Я ") + '</div>' +
+        (BETA ? "" : '<div id="acc-local"><button type="button" id="acc-local-go">Использовать локально</button>' +
+          '<div class="note">Без аккаунта база хранится только на этом телефоне: синхронизации между устройствами нет, а если удалить приложение — вещи пропадут. Войти можно позже — в меню справа вверху.</div></div>') +
       '</div>' +
       '<div id="acc-in" hidden style="display:flex;flex-direction:column;gap:12px">' +
         '<div class="acc-me"><div class="acc-ava" id="acc-ava"></div><div><b id="acc-mail"></b><span class="note">База хранится онлайн и на этом телефоне</span></div></div>' +
@@ -346,6 +354,7 @@
       else location.href = oauthUrl(b.dataset.p);
     });
     $("acc-link-tg").onclick = () => tgStart("tg", true);
+    if ($("acc-local-go")) $("acc-local-go").onclick = async () => { localOk = true; await K.put("meta", { key: "localMode", on: true }); sh.hidden = true; paint(); };
     $("acc-wait-cancel").onclick = () => tgStop(true);
     $("acc-form").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -388,9 +397,11 @@
       await signOut();
       await K.replaceData(Object.fromEntries(DATA.map(c => [c, []]))); await Promise.all(DATA.map(K.emit));
       await K.put("meta", { key: "cloudBase", none: true });
+      localOk = false; await K.put("meta", { key: "localMode", none: true });
       $("acc-logout-confirm").hidden = true; setState(""); paint();
     };
 
+    const lm = await K.get("meta", "localMode"); localOk = !BETA && !!(lm && lm.on);
     const s = await K.get("meta", "cloudSession");
     session = s && s.access_token ? { access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at, user: s.user } : null;
     paint();

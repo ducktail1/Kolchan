@@ -1,5 +1,5 @@
 // Offline cache for the app shell. Bump VERSION when files change.
-const VERSION = "1.4.0";
+const VERSION = "1.4.1";
 const FILES = ["./", "index.html", "local.js", "friends.js", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -17,6 +17,7 @@ self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET" || new URL(req.url).origin !== self.location.origin) return;
   if (req.url.endsWith("seed.json")) return;
+  if (new URL(req.url).pathname.includes("/beta/")) return;   // the beta app has its own worker
   e.respondWith(
     fetch(req)
       .then((res) => {

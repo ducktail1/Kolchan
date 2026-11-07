@@ -13,8 +13,10 @@
 
 const TRANSIT = "В пути";
 const LOG_MAX = 80;
-const DATA = ["places", "bags", "items"];
-export const BOT_VERSION = "1.1.0";
+const DATA = ["places", "bags", "items", "quivers"];
+const MAINQ = "main", MAIN_NAME = "Основной";
+const QOF = (r) => (r && r.q) || MAINQ;
+export const BOT_VERSION = "1.2.0";
 
 // ---------- helpers ----------
 const low = (s) => (s || "").toLowerCase().replace(/ё/g, "е");
@@ -35,10 +37,11 @@ const b64enc = (str) => { const bytes = new TextEncoder().encode(str); let bin =
 const b64dec = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, "")), (ch) => ch.charCodeAt(0)));
 
 export function serialize(d) {
-  const order = { places: (a, b) => (a.order || 0) - (b.order || 0), bags: (a, b) => (a.order || 0) - (b.order || 0), items: (a, b) => (a.id < b.id ? -1 : 1) };
+  const byOrder = (a, b) => (a.order || 0) - (b.order || 0);
+  const order = { places: byOrder, bags: byOrder, quivers: byOrder, items: (a, b) => (a.id < b.id ? -1 : 1) };
   const keySort = (o) => JSON.stringify(Object.keys(o).sort().reduce((m, k) => ((m[k] = o[k]), m), {}));
   const lines = ["{", '"app": "kolchan", "version": 1, "exportedAt": ' + Date.now() + ","];
-  DATA.forEach((c) => { lines.push('"' + c + '": ['); lines.push((d[c] || []).slice().sort(order[c]).map(keySort).join(",\n")); lines.push("],"); });
+  DATA.forEach((c) => { if (c === "quivers" && !(d[c] || []).length) return; lines.push('"' + c + '": ['); lines.push((d[c] || []).slice().sort(order[c]).map(keySort).join(",\n")); lines.push("],"); });
   lines.push('"photos": []', "}");
   return lines.join("\n") + "\n";
 }
@@ -66,7 +69,24 @@ async function save(env, data, sha, message) {
 }
 
 // ---------- model ----------
-const bagById = (d, id) => d.bags.find((b) => b.id === id);
+// quivers: every record carries q (no q = the first quiver). A "scope" is the same data narrowed to one quiver;
+// records are shared objects, so changes made through a scope land in the real data.
+const rootOf = (d) => d.root || d;
+function scope(d, q) {
+  const r = rootOf(d);
+  return { root: r, q, quivers: r.quivers, places: r.places.filter((x) => QOF(x) === q), bags: r.bags.filter((x) => QOF(x) === q), items: r.items.filter((x) => QOF(x) === q) };
+}
+function qIds(d) {
+  const r = rootOf(d), ids = new Set([MAINQ]);
+  (r.quivers || []).forEach((x) => ids.add(x.id));
+  ["places", "bags", "items"].forEach((c) => r[c].forEach((x) => ids.add(QOF(x))));
+  const ord = (id) => { const x = (r.quivers || []).find((y) => y.id === id); return x ? x.order || 0 : id === MAINQ ? -1 : 1e6; };
+  return [...ids].sort((a, b) => ord(a) - ord(b));
+}
+const multiQ = (d) => qIds(d).length > 1;
+function qName(d, id) { const x = (rootOf(d).quivers || []).find((y) => y.id === id); return x && x.name ? x.name : id === MAINQ ? MAIN_NAME : "Колчан"; }
+const setQ = (rec, q) => { if (q && q !== MAINQ) rec.q = q; else delete rec.q; };
+const bagById = (d, id) => rootOf(d).bags.find((b) => b.id === id);
 function bagWhere(b) { return (b.location || "место не указано") + (b.location === TRANSIT && b.dest ? " → " + b.dest : ""); }
 function itemWhere(d, it) {
   const b = it.in && bagById(d, it.in);
@@ -84,7 +104,9 @@ function ensurePlace(d, path) {
   if (ex) return ex;
   const order = d.places.reduce((m, p) => Math.max(m, p.order || 0), 0) + 10;
   const p = { id: uid(), name: top, order, _t: Date.now() };
-  d.places.push(p);
+  setQ(p, d.q);
+  rootOf(d).places.push(p);
+  if (d.root) d.places.push(p);
   return p;
 }
 // every known loose place path
@@ -95,18 +117,26 @@ function allPaths(d) {
   return s;
 }
 
-// destination text → {in} | {place} | {unknown: text} | {ambiguous: [...]}
+// destination text → {in, q} | {place, q} | {unknown: text} | {ambiguous: [...]}
+// Without a scope it looks in every quiver and reports a clash when the name exists in several.
 function resolveDest(d, text) {
   const t = clean(text);
   if (!t) return null;
+  if (!d.root) {
+    const hits = qIds(d).map((q) => resolveDest(scope(d, q), t)).filter((r) => r && (r.place || r.in || r.ambiguous));
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) return { ambiguous: true, places: [], bags: [], any: true };
+    return { unknown: pathStr(norm(t)) };
+  }
+  const R = (o) => Object.assign(o, { q: d.q });
   const path = pathStr(norm(t));
   const paths = allPaths(d);
-  if (paths.has(low(path))) return { place: paths.get(low(path)) };
+  if (paths.has(low(path))) return R({ place: paths.get(low(path)) });
   const exactBag = d.bags.filter((b) => low(b.name) === low(t));
-  if (exactBag.length === 1) return { in: exactBag[0].id };
+  if (exactBag.length === 1) return R({ in: exactBag[0].id });
   const bagHits = d.bags.filter((b) => matches(b.name, t));
   const placeHits = d.places.filter((p) => matches(p.name, t));
-  if (bagHits.length + placeHits.length === 1) return bagHits.length ? { in: bagHits[0].id } : { place: placeHits[0].name };
+  if (bagHits.length + placeHits.length === 1) return R(bagHits.length ? { in: bagHits[0].id } : { place: placeHits[0].name });
   if (bagHits.length + placeHits.length > 1) return { ambiguous: true, bags: bagHits, places: placeHits };
   return { unknown: path };
 }
@@ -142,8 +172,9 @@ function addItem(d, name, dest) {
   const t = Date.now();
   const it = { id: uid(), name, place: "", parts: [], in: null, qty: "", note: "", photo: null, missing: false, updatedAt: t, _t: t, log: [] };
   if (dest.in) it.in = dest.in; else { it.parts = norm(dest.place); it.place = pathStr(it.parts); }
+  setQ(it, dest.in ? QOF(bagById(d, dest.in)) : dest.q || d.q);
   it.log = [{ t, kind: "move", to: labelFor(d, dest), in: it.in }];
-  d.items.push(it);
+  rootOf(d).items.push(it);
   return it;
 }
 
@@ -178,18 +209,19 @@ const MENU = {
 
 const topPlace = (d, name) => d.places.find((p) => low(p.name) === low(norm(name)[0]));
 const countAt = (d, p) => {
-  const lp = low(p.name);
-  return d.items.filter((i) => (!i.in && low((i.parts || [])[0]) === lp) || (i.in && low(norm((bagById(d, i.in) || {}).location)[0]) === lp)).length;
+  const lp = low(p.name), ds = scope(d, QOF(p));
+  return ds.items.filter((i) => (!i.in && low((i.parts || [])[0]) === lp) || (i.in && low(norm((bagById(d, i.in) || {}).location)[0]) === lp)).length;
 };
+const qTag = (d, r) => (multiQ(d) ? " · " + qName(d, QOF(r)) : "");
 const inBag = (d, b) => d.items.filter((i) => i.in === b.id);
 const targetOf = (d, kind, id) => (kind === "b" ? bagById(d, id) : d.items.find((i) => i.id === id));
 const destFromCode = (d, kind, id) => {
-  if (kind === "p") { const p = d.places.find((x) => x.id === id); return p ? { place: p.name } : null; }
-  const b = bagById(d, id); return b ? { in: b.id } : null;
+  if (kind === "p") { const p = rootOf(d).places.find((x) => x.id === id); return p ? { place: p.name, q: QOF(p) } : null; }
+  const b = bagById(d, id); return b ? { in: b.id, q: QOF(b) } : null;
 };
 const backFor = (d, it) => {
   if (it.in && bagById(d, it.in)) return btn("⬅ " + bagById(d, it.in).name, "b:" + it.in);
-  const p = topPlace(d, it.place); return p ? btn("⬅ " + p.name, "p:" + p.id) : btn("⬅ Места", "P");
+  const p = topPlace(scope(d, QOF(it)), it.place); return p ? btn("⬅ " + p.name, "p:" + p.id) : btn("⬅ Места", "P");
 };
 const pager = (prefix, page, total) => {
   const pages = Math.ceil(total / PAGE); if (pages <= 1) return [];
@@ -211,7 +243,7 @@ function logLine(e) {
 
 // ---------- views (return {text, kb}) ----------
 function itemCard(d, it, head) {
-  let s = (head ? head + "\n\n" : "") + "<b>" + esc(it.name) + "</b>" + (it.qty ? " × " + esc(it.qty) : "") + "\n📍 " + esc(itemWhere(d, it));
+  let s = (head ? head + "\n\n" : "") + "<b>" + esc(it.name) + "</b>" + (it.qty ? " × " + esc(it.qty) : "") + (multiQ(d) ? "\n🗂 " + esc(qName(d, QOF(it))) : "") + "\n📍 " + esc(itemWhere(d, it));
   if (it.missing) s += "\n⚠ отмечена как не нашлась";
   if (it.note) s += "\n📝 " + esc(it.note);
   const log = (it.log || []).slice(-6).reverse();
@@ -219,17 +251,18 @@ function itemCard(d, it, head) {
   return { text: s, kb: kbd([[btn("⇄ Переложить", "mv:i:" + it.id)], [backFor(d, it)]]) };
 }
 function placeView(d, p, page = 0, head) {
-  const lp = low(p.name);
-  const bags = sortedBags(d).filter((b) => low(norm(b.location)[0]) === lp);
-  const loose = d.items.filter((i) => !i.in && low((i.parts || [])[0]) === lp)
+  const lp = low(p.name), ds = scope(d, QOF(p));
+  const bags = sortedBags(ds).filter((b) => low(norm(b.location)[0]) === lp);
+  const loose = ds.items.filter((i) => !i.in && low((i.parts || [])[0]) === lp)
     .sort((a, b) => a.place.localeCompare(b.place, "ru") || a.name.localeCompare(b.name, "ru"));
-  let s = (head ? head + "\n\n" : "") + "📍 <b>" + esc(p.name) + "</b>\n" + (bags.length ? bags.length + " " + plural(bags.length, ["сумка", "сумки", "сумок"]) + " · " : "") + nItems(loose.length) + " отдельно";
+  let s = (head ? head + "\n\n" : "") + "📍 <b>" + esc(p.name) + "</b>" + (multiQ(d) ? " · " + esc(qName(d, QOF(p))) : "") + "\n" + (bags.length ? bags.length + " " + plural(bags.length, ["сумка", "сумки", "сумок"]) + " · " : "") + nItems(loose.length) + " отдельно";
   if (!bags.length && !loose.length) s += "\n\nЗдесь пока ничего нет.";
   const rows = [];
   if (page === 0) bags.forEach((b) => rows.push([btn("🎒 " + b.name + " · " + inBag(d, b).length, "b:" + b.id)]));
   loose.slice(page * PAGE, page * PAGE + PAGE).forEach((i) => rows.push([btn((i.missing ? "⚠ " : "") + i.name + ((i.parts || []).length > 1 ? " · " + pathStr(i.parts.slice(1)) : ""), "i:" + i.id)]));
   rows.push(pager("p:" + p.id, page, loose.length));
-  rows.push([btn("➕ Добавить сюда", "ad:p:" + p.id), btn("⬅ Места", "P")]);
+  rows.push([btn("➕ Добавить сюда", "ad:p:" + p.id), btn("✎ Переименовать", "rn:" + p.id)]);
+  rows.push([btn("⬅ Места", "P")]);
   return { text: s, kb: kbd(rows) };
 }
 function bagView(d, b, page = 0, head) {
@@ -241,18 +274,24 @@ function bagView(d, b, page = 0, head) {
   rows.push(pager("b:" + b.id, page, inside.length));
   if (b.location === TRANSIT) rows.push([btn("✅ Принять" + (b.dest ? " в " + b.dest : ""), "rc:" + b.id)]);
   rows.push([btn("🚚 Отправить", "snd:" + b.id), btn("⇄ Переложить", "mv:b:" + b.id)]);
-  const p = topPlace(d, b.location);
+  const p = topPlace(scope(d, QOF(b)), b.location);
   rows.push([btn("➕ Положить в сумку", "ad:b:" + b.id), p ? btn("⬅ " + p.name, "p:" + p.id) : btn("⬅ Сумки", "B")]);
   return { text: s, kb: kbd(rows) };
 }
+// several quivers: a section per quiver, with a header row
+function byQuiver(d, fn) {
+  if (!multiQ(d)) return fn(scope(d, MAINQ), MAINQ);
+  const rows = [];
+  qIds(d).forEach((q) => { const part = fn(scope(d, q), q); if (part.length) { rows.push([btn("🗂 " + qName(d, q), "noop")]); rows.push(...part); } });
+  return rows;
+}
 function placesList(d) {
-  const rows = pairs(sortedPlaces(d).map((p) => btn("📍 " + p.name + " · " + countAt(d, p), "p:" + p.id)));
-  rows.push([btn("➕ Новое место", "npl")]);
+  const rows = byQuiver(d, (ds, q) => pairs(sortedPlaces(ds).map((p) => btn("📍 " + p.name + " · " + countAt(d, p), "p:" + p.id))).concat([[btn("➕ Новое место" + (multiQ(d) ? " в «" + qName(d, q) + "»" : ""), "npl:" + q)]]));
   return { text: "📍 <b>Места</b>", kb: kbd(rows) };
 }
 function bagsList(d) {
-  const bags = sortedBags(d);
-  return { text: bags.length ? "🎒 <b>Сумки</b>" : "Сумок пока нет.", kb: kbd(bags.map((b) => [btn("🎒 " + b.name + " · " + bagWhere(b), "b:" + b.id)])) };
+  const rows = byQuiver(d, (ds) => sortedBags(ds).map((b) => [btn("🎒 " + b.name + " · " + bagWhere(b), "b:" + b.id)]));
+  return { text: rows.length ? "🎒 <b>Сумки</b>" : "Сумок пока нет.", kb: kbd(rows) };
 }
 function transitList(d) {
   const bags = sortedBags(d).filter((b) => b.location === TRANSIT);
@@ -277,15 +316,16 @@ function historyView(d) {
 // where to put something: places in pairs, then bags (for items), then "new place" and "back"
 function destPicker(d, kind, id, title) {
   const t = targetOf(d, kind, id);
-  const rows = pairs(sortedPlaces(d).filter((p) => !(kind === "b" && p.name === TRANSIT)).map((p) => btn("📍 " + p.name, "md:" + kind + ":" + id + ":p:" + p.id)));
-  if (kind === "i") sortedBags(d).forEach((b) => rows.push([btn("🎒 " + b.name + " · " + b.location, "md:i:" + id + ":b:" + b.id)]));
+  const ds = scope(d, QOF(t));
+  const rows = pairs(sortedPlaces(ds).filter((p) => !(kind === "b" && p.name === TRANSIT)).map((p) => btn("📍 " + p.name, "md:" + kind + ":" + id + ":p:" + p.id)));
+  if (kind === "i") sortedBags(ds).forEach((b) => rows.push([btn("🎒 " + b.name + " · " + b.location, "md:i:" + id + ":b:" + b.id)]));
   rows.push([btn("➕ Новое место", "nw:" + kind + ":" + id), btn("⬅ Назад", kind + ":" + id)]);
   return { text: title || "Куда переложить <b>" + esc(t.name) + "</b>?", kb: kbd(rows) };
 }
 function addPicker(d, names) {
-  const rows = pairs(sortedPlaces(d).map((p) => btn("📍 " + p.name, "ap:p:" + p.id)));
-  sortedBags(d).forEach((b) => rows.push([btn("🎒 " + b.name + " · " + b.location, "ap:b:" + b.id)]));
-  rows.push([btn("➕ Новое место", "anp")]);
+  const rows = byQuiver(d, (ds, q) => pairs(sortedPlaces(ds).map((p) => btn("📍 " + p.name, "ap:p:" + p.id)))
+    .concat(sortedBags(ds).map((b) => [btn("🎒 " + b.name + " · " + b.location, "ap:b:" + b.id)]))
+    .concat([[btn("➕ Новое место" + (multiQ(d) ? " в «" + qName(d, q) + "»" : ""), "anp:" + q)]]));
   return { text: st({ k: "add", n: names }) + "Куда положить: <b>" + esc(names.join(", ")) + "</b>?", kb: kbd(rows) };
 }
 function searchView(d, q) {
@@ -293,25 +333,37 @@ function searchView(d, q) {
   if (!q) return { text: "Напиши, что ищешь." };
   const paths = allPaths(d);
   const pq = pathStr(norm(q));
-  const exactPlace = d.places.find((p) => low(p.name) === low(pq));
-  if (exactPlace) return placeView(d, exactPlace);
+  const exactPlaces = d.places.filter((p) => low(p.name) === low(pq));
+  if (exactPlaces.length === 1) return placeView(d, exactPlaces[0]);
   const exactBag = d.bags.filter((b) => low(b.name) === low(q));
   if (exactBag.length === 1) return bagView(d, exactBag[0]);
   const f = findThings(d, q);
-  const pl = d.places.filter((p) => matches(p.name, q));
+  const pl = exactPlaces.length > 1 ? exactPlaces : d.places.filter((p) => matches(p.name, q));
   const total = f.items.length + f.bags.length + pl.length;
   if (!total) {
     if (paths.has(low(pq))) { const p = topPlace(d, pq); if (p) return placeView(d, p); }
     return { text: "Не нашёл «" + esc(q) + "».", kb: kbd([[btn("➕ Добавить «" + q + "»", "aq")]]), state: { k: "q", q } };
   }
   if (total === 1) return f.items.length ? itemCard(d, f.items[0]) : f.bags.length ? bagView(d, f.bags[0]) : placeView(d, pl[0]);
-  const rows = pl.map((p) => [btn("📍 " + p.name, "p:" + p.id)])
-    .concat(f.bags.map((b) => [btn("🎒 " + b.name + " · " + bagWhere(b), "b:" + b.id)]))
-    .concat(f.items.slice(0, 30).map((i) => [btn((i.missing ? "⚠ " : "") + i.name + " · " + itemWhere(d, i).replace(/^в «[^»]*» \(/, "🎒 ").replace(/\)$/, ""), "i:" + i.id)]));
+  const rows = pl.map((p) => [btn("📍 " + p.name + qTag(d, p), "p:" + p.id)])
+    .concat(f.bags.map((b) => [btn("🎒 " + b.name + " · " + bagWhere(b) + qTag(d, b), "b:" + b.id)]))
+    .concat(f.items.slice(0, 30).map((i) => [btn((i.missing ? "⚠ " : "") + i.name + " · " + itemWhere(d, i).replace(/^в «[^»]*» \(/, "🎒 ").replace(/\)$/, "") + qTag(d, i), "i:" + i.id)]));
   return { text: "🔎 «" + esc(q) + "» — нашёл " + total + (f.items.length > 30 ? ". Показал первые 30, напиши точнее." : ""), kb: kbd(rows) };
 }
 
 // ---------- actions that change data ----------
+// rename a top-level place inside its quiver: the place, loose items and bags there (or heading there);
+// a name that already exists merges the two places. History stays as it was.
+function doRename(d, p, name) {
+  const ds = scope(d, QOF(p)), old = low(p.name), t = Date.now();
+  const swap = (path) => { const a = norm(path); if (low(a[0]) !== old) return null; a[0] = name; return pathStr(a); };
+  ds.items.forEach((i) => { if (i.in) return; const np = swap(i.place); if (np === null) return; i.parts = norm(np); i.place = np; i.updatedAt = t; i._t = t; });
+  ds.bags.forEach((b) => { const nl = swap(b.location), nd = b.dest ? swap(b.dest) : null; if (nl === null && nd === null) return; if (nl !== null) b.location = nl; if (nd !== null) b.dest = nd; b._t = t; });
+  const other = ds.places.find((x) => x !== p && low(x.name) === low(name));
+  const r = rootOf(d);
+  if (other) { r.places.splice(r.places.indexOf(p), 1); return other; }
+  p.name = name; p._t = t; return p;
+}
 function doMove(d, kind, id, dest, note) {
   const t = targetOf(d, kind, id);
   if (!t) return { text: "Не нашёл — может, уже удалено." };
@@ -328,7 +380,8 @@ function doAdd(d, names, dest, note) {
   const added = names.map((n) => addItem(d, n, dest));
   if (note) added.forEach((it) => { it.log[0].note = note; });
   const head = "➕ Добавил: " + added.map((i) => "<b>" + esc(i.name) + "</b>").join(", ") + "\n→ " + esc(labelFor(d, dest));
-  const view = dest.in ? bagView(d, bagById(d, dest.in), 0, head) : added.length === 1 ? itemCard(d, added[0], "➕ Добавил") : placeView(d, topPlace(d, dest.place), 0, head);
+  const tp = !dest.in && topPlace(scope(d, QOF(added[0])), dest.place);
+  const view = dest.in ? bagView(d, bagById(d, dest.in), 0, head) : added.length === 1 || !tp ? itemCard(d, added[0], "➕ Добавил") : placeView(d, tp, 0, head);
   return Object.assign(view, { change: "Бот: добавлено " + names.join(", ") });
 }
 function doSend(d, b, place) {
@@ -378,12 +431,23 @@ export function onText(d, text, reply) {
     if (s.d) { const [k, id] = s.d.split(":"); const dest = destFromCode(d, k, id); if (dest) return doAdd(d, names, dest); }
     return addPicker(d, names);
   }
-  if (s && s.k === "addnp") { const name = clean(t.replace(/\//g, " ")); if (!name) return { text: "Не вижу названия." }; ensurePlace(d, name); return doAdd(d, s.n || [], { place: topPlace(d, name).name }); }
+  if (s && s.k === "addnp") { const name = clean(t.replace(/\//g, " ")); if (!name) return { text: "Не вижу названия." }; const ds = scope(d, s.q || MAINQ); const pl = ensurePlace(ds, name); return doAdd(d, s.n || [], { place: pl.name, q: ds.q }); }
   if (s && s.k === "np") {
     const name = clean(t.replace(/\//g, " ")); if (!name) return { text: "Не вижу названия." };
-    ensurePlace(d, name);
-    if (s.t) return doMove(d, s.t, s.id, { place: topPlace(d, name).name });
-    return Object.assign(placeView(d, topPlace(d, name), 0, "📍 Добавил место"), { change: "Бот: новое место " + name });
+    const tg0 = s.t ? targetOf(d, s.t, s.id) : null;
+    if (s.t && !tg0) return { text: "Не нашёл — может, уже удалено." };
+    const ds = scope(d, tg0 ? QOF(tg0) : s.q || MAINQ);
+    const pl = ensurePlace(ds, name);
+    if (s.t) return doMove(d, s.t, s.id, { place: pl.name, q: ds.q });
+    return Object.assign(placeView(d, pl, 0, "📍 Добавил место"), { change: "Бот: новое место " + name });
+  }
+  if (s && s.k === "rn") {
+    const p = rootOf(d).places.find((x) => x.id === s.id); if (!p) return { text: "Не нашёл это место." };
+    const name = clean(t.replace(/\//g, " ")); if (!name) return { text: "Не вижу названия." };
+    if (name === p.name) return placeView(d, p);
+    const oldName = p.name, merged = scope(d, QOF(p)).places.some((x) => x !== p && low(x.name) === low(name));
+    const res = doRename(d, p, name);
+    return Object.assign(placeView(d, res, 0, merged ? "🔀 Объединил «" + esc(oldName) + "» с «" + esc(res.name) + "»" : "✎ Переименовал «" + esc(oldName) + "» → «" + esc(name) + "»"), { change: "Бот: место " + oldName + " → " + name });
   }
   if (s && s.k === "mv") {
     const f = findThings(d, t);
@@ -413,16 +477,16 @@ export function onText(d, text, reply) {
     const f = findThings(d, what);
     const all = f.items.map((o) => ["i", o]).concat(f.bags.map((o) => ["b", o]));
     if (!all.length) return { text: "Не нашёл «" + esc(what) + "».", kb: kbd([[btn("➕ Добавить «" + what + "»", "aq")]]), state: { k: "q", q: what } };
-    const dest = whereText ? resolveDest(d, whereText) : null;
     if (all.length > 1) {
       return { text: st({ k: "mvto", w: whereText, note }) + "Что именно переложить" + (whereText ? " → " + esc(whereText) : "") + "?", kb: kbd(all.slice(0, 30).map(([k, o]) => [btn((k === "b" ? "🎒 " : "") + o.name + " · " + (k === "b" ? bagWhere(o) : itemWhere(d, o)), "mt:" + k + ":" + o.id)])) };
     }
-    return moveTo(d, all[0][0], all[0][1].id, whereText, dest, note);
+    return moveTo(d, all[0][0], all[0][1].id, whereText, note);
   }
   return searchView(d, t);
 }
-function moveTo(d, kind, id, whereText, dest, note) {
-  if (!dest) return destPicker(d, kind, id);
+function moveTo(d, kind, id, whereText, note) {
+  if (!whereText) return destPicker(d, kind, id);
+  const dest = resolveDest(scope(d, QOF(targetOf(d, kind, id))), whereText);
   if (dest.in || dest.place) return doMove(d, kind, id, dest, note);
   if (dest.unknown) {
     const t = targetOf(d, kind, id);
@@ -445,19 +509,20 @@ export function onButton(d, data, msg) {
     case "i": { const it = d.items.find((x) => x.id === p[1]); return it ? itemCard(d, it) : { text: "Не нашёл — может, уже удалено." }; }
     case "mv": return targetOf(d, p[1], p[2]) ? destPicker(d, p[1], p[2]) : { text: "Не нашёл — может, уже удалено." };
     case "md": { const dest = destFromCode(d, p[3], p[4]); return dest ? doMove(d, p[1], p[2], dest) : { text: "Не нашёл это место." }; }
-    case "mt": return targetOf(d, p[1], p[2]) ? moveTo(d, p[1], p[2], s.w || "", s.w ? resolveDest(d, s.w) : null, s.note) : { text: "Не нашёл — может, уже удалено." };
-    case "mnew": { if (!s.p) return null; ensurePlace(d, s.p); return doMove(d, s.t, s.id, { place: s.p }, s.note); }
+    case "mt": return targetOf(d, p[1], p[2]) ? moveTo(d, p[1], p[2], s.w || "", s.note) : { text: "Не нашёл — может, уже удалено." };
+    case "mnew": { const tg0 = targetOf(d, s.t, s.id); if (!s.p || !tg0) return null; const ds = scope(d, QOF(tg0)); ensurePlace(ds, s.p); return doMove(d, s.t, s.id, { place: s.p, q: ds.q }, s.note); }
     case "nw": { const t = targetOf(d, p[1], p[2]); if (!t) return null; return { ask: true, text: st({ k: "np", t: p[1], id: p[2] }) + "Как назвать новое место для <b>" + esc(t.name) + "</b>?", force: "Например: Гараж" }; }
-    case "npl": return { ask: true, text: st({ k: "np" }) + "Как назвать новое место?", force: "Например: Гараж" };
+    case "rn": { const pl = rootOf(d).places.find((x) => x.id === p[1]); if (!pl) return null; return { ask: true, text: st({ k: "rn", id: pl.id }) + "Новое название для «" + esc(pl.name) + "»? Если такое место уже есть, они объединятся.", force: pl.name }; }
+    case "npl": return { ask: true, text: st({ k: "np", q: p[1] || MAINQ }) + "Как назвать новое место" + (multiQ(d) ? " в «" + esc(qName(d, p[1] || MAINQ)) + "»" : "") + "?", force: "Например: Гараж" };
     case "ad": { const t = p[1] === "p" ? d.places.find((x) => x.id === p[2]) : bagById(d, p[2]); if (!t) return null; return { ask: true, text: st({ k: "add", d: p[1] + ":" + p[2] }) + "Что положить в «" + esc(t.name) + "»? Несколько — через запятую.", force: "Например: Маска Smith" }; }
     case "aq": return s.q ? addPicker(d, [s.q]) : null;
     case "ap": { const dest = destFromCode(d, p[1], p[2]); return dest && s.n ? doAdd(d, s.n, dest, s.note) : { text: "Не получилось — начни заново." }; }
-    case "anp": return s.n ? { ask: true, text: st({ k: "addnp", n: s.n }) + "Как назвать новое место?", force: "Например: Гараж" } : null;
-    case "anew": { if (!s.np || !s.n) return null; ensurePlace(d, s.np); return doAdd(d, s.n, { place: s.np }, s.note); }
+    case "anp": return s.n ? { ask: true, text: st({ k: "addnp", n: s.n, q: p[1] || MAINQ }) + "Как назвать новое место?", force: "Например: Гараж" } : null;
+    case "anew": { if (!s.np || !s.n) return null; const ds = scope(d, MAINQ); ensurePlace(ds, s.np); return doAdd(d, s.n, { place: s.np, q: MAINQ }, s.note); }
     case "apick": return s.n ? addPicker(d, s.n) : null;
     case "snd": {
       const b = bagById(d, p[1]); if (!b) return null;
-      const rows = pairs(sortedPlaces(d).filter((x) => x.name !== TRANSIT && x.name !== b.location).map((x) => btn("📍 " + x.name, "sd:" + b.id + ":" + x.id)));
+      const rows = pairs(sortedPlaces(scope(d, QOF(b))).filter((x) => x.name !== TRANSIT && x.name !== b.location).map((x) => btn("📍 " + x.name, "sd:" + b.id + ":" + x.id)));
       rows.push([btn("⬅ Назад", "b:" + b.id)]);
       return { text: "Куда отправить <b>" + esc(b.name) + "</b>? Пока едет, она будет в «" + TRANSIT + "».", kb: kbd(rows) };
     }

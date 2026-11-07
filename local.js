@@ -2,9 +2,9 @@
 // inside Claude, but keeps everything in this phone's IndexedDB.
 (function () {
   "use strict";
-  const DB_NAME = "kolchan", DB_VER = 1;
-  const STORES = ["places", "bags", "items", "photos", "meta"];
-  const DATA = ["places", "bags", "items"];
+  const DB_NAME = "kolchan", DB_VER = 2;
+  const STORES = ["places", "bags", "items", "photos", "meta", "quivers"];
+  const DATA = ["places", "bags", "items", "quivers"];
 
   const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   const done = (t) => new Promise((res, rej) => { t.oncomplete = res; t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
@@ -14,6 +14,9 @@
   const keyOf = (s, o) => s === "meta" ? o.key : o.id;
   const PREVIEW = !!window.__KOLCHAN_PREVIEW;
   if (PREVIEW) { try { indexedDB.deleteDatabase(DB_NAME); } catch (e) {} }
+  // test bench: every open starts from a fresh copy of the given base (kept in memory only)
+  const SEED = PREVIEW && window.__KOLCHAN_SEED;
+  if (SEED) DATA.forEach(c => (SEED[c] || []).forEach(o => { if (o && o.id) mem[c].set(o.id, Object.assign({}, o)); }));
   const dbp = PREVIEW ? Promise.resolve(null) : new Promise((res) => {
     let settled = false;
     const fin = (v) => { if (!settled) { settled = true; res(v); } };
@@ -41,13 +44,13 @@
   async function replaceAll(data) {
     const d = await dbp;
     if (!d) {
-      ["places", "bags", "items", "photos"].forEach(s => mem[s].clear());
+      DATA.concat("photos").forEach(s => mem[s].clear());
       DATA.forEach(s => (data[s] || []).forEach(o => { if (o && o.id) mem[s].set(o.id, o); }));
       (data.photos || []).forEach(o => mem.photos.set(o.id, o));
       return;
     }
-    const t = d.transaction(["places", "bags", "items", "photos"], "readwrite");
-    ["places", "bags", "items", "photos"].forEach(s => t.objectStore(s).clear());
+    const t = d.transaction(DATA.concat("photos"), "readwrite");
+    DATA.concat("photos").forEach(s => t.objectStore(s).clear());
     DATA.forEach(s => (data[s] || []).forEach(o => { if (o && o.id) t.objectStore(s).put(o); }));
     (data.photos || []).forEach(o => t.objectStore("photos").put(o));
     await done(t);
@@ -70,7 +73,7 @@
   window.__photoSrc = (id) => urls.get(id) || "";
 
   // db: collection(name).orderBy(f).onSnapshot(cb) / .doc(id).set(d) / .delete()
-  const listeners = { places: [], bags: [], items: [] };
+  const listeners = { places: [], bags: [], items: [], quivers: [] };
   async function emit(name) {
     const rows = await all(name);
     listeners[name].forEach(({ cb, field }) => {
@@ -123,12 +126,12 @@
     $("d-close").onclick = () => { $("data-bg").hidden = true; };
     $("data-bg").addEventListener("click", (e) => { if (e.target === $("data-bg")) $("data-bg").hidden = true; });
     $("d-export").onclick = async () => {
-      const [places, bags, items] = await Promise.all(DATA.map(all));
+      const [places, bags, items, quivers] = await Promise.all(DATA.map(all));
       const photos = [];
       for (const p of await all("photos")) { try { photos.push({ id: p.id, type: p.type, data: await toDataUrl(p.blob) }); } catch (e) {} }
       const t = Date.now(), d = new Date(t), pad = (n) => String(n).padStart(2, "0");
       const fname = "kolchan-" + d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + ".json";
-      const file = new File([JSON.stringify({ app: "kolchan", version: 1, exportedAt: t, places, bags, items, photos })], fname, { type: "application/json" });
+      const file = new File([JSON.stringify(Object.assign({ app: "kolchan", version: 1, exportedAt: t, places, bags, items }, quivers.length ? { quivers } : {}, { photos }))], fname, { type: "application/json" });
       let shared = false;
       try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Колчан" }); shared = true; } }
       catch (e) { if (e && e.name === "AbortError") return; }
@@ -165,7 +168,7 @@
 // ---------- sync with a private GitHub repo (data.json) ----------
 (function () {
   "use strict";
-  const DATA = ["places", "bags", "items"];
+  const DATA = ["places", "bags", "items", "quivers"];
   const $ = (id) => document.getElementById(id);
   const K = window.__kolchan;
   const fmt = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -201,10 +204,11 @@
     return out;
   }
   function serialize(d) {
-    const order = { places: (a, b) => (a.order || 0) - (b.order || 0), bags: (a, b) => (a.order || 0) - (b.order || 0), items: (a, b) => a.id < b.id ? -1 : 1 };
+    const byOrder = (a, b) => (a.order || 0) - (b.order || 0);
+    const order = { places: byOrder, bags: byOrder, quivers: byOrder, items: (a, b) => a.id < b.id ? -1 : 1 };
     const keySort = (o) => JSON.stringify(Object.keys(o).sort().reduce((m, k) => (m[k] = o[k], m), {}));
     const lines = ["{", '"app": "kolchan", "version": 1, "exportedAt": ' + Date.now() + ","];
-    DATA.forEach(c => { lines.push('"' + c + '": ['); lines.push(d[c].slice().sort(order[c]).map(keySort).join(",\n")); lines.push("],"); });
+    DATA.forEach(c => { if (c === "quivers" && !(d[c] || []).length) return; lines.push('"' + c + '": ['); lines.push((d[c] || []).slice().sort(order[c]).map(keySort).join(",\n")); lines.push("],"); });
     lines.push('"photos": []', "}");
     return lines.join("\n") + "\n";
   }

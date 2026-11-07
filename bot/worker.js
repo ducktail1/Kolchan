@@ -16,7 +16,7 @@ const LOG_MAX = 80;
 const DATA = ["places", "bags", "items", "quivers"];
 const MAINQ = "main", MAIN_NAME = "Основной";
 const QOF = (r) => (r && r.q) || MAINQ;
-export const BOT_VERSION = "1.2.2";
+export const BOT_VERSION = "1.3.0";
 
 // ---------- helpers ----------
 const low = (s) => (s || "").toLowerCase().replace(/ё/g, "е");
@@ -568,6 +568,7 @@ async function send(env, chatId, res, editId) {
   const body = Object.assign({}, base, { text: parts[parts.length - 1] || "…" });
   if (res.force) body.reply_markup = { force_reply: true, input_field_placeholder: res.force };
   else if (res.menu) body.reply_markup = MENU;
+  else if (res.remove) body.reply_markup = { remove_keyboard: true };
   else if (res.kb) body.reply_markup = res.kb;
   if (editId && !res.force && !res.menu && parts.length === 1) {
     const r = await tg(env, "editMessageText", Object.assign({ message_id: editId }, body));
@@ -587,10 +588,59 @@ async function transact(env, fn) {
   }
 }
 
+// ---------- вход в приложение через Telegram (для всех, не только владельца) ----------
+// Приложение открывает t.me/<бот>?start=login_<код>[_p]; здесь человек подтверждает вход
+// (и при входе по номеру делится контактом), а бот сообщает об этом функции tg-auth в Supabase.
+async function loginCall(env, body) {
+  const r = await fetch(env.LOGIN_URL, { method: "POST", headers: { "Content-Type": "application/json", "x-login-secret": env.LOGIN_SECRET }, body: JSON.stringify(body) });
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(j.error || "login " + r.status);
+  return j;
+}
+const LOGIN_START = /^\/start\s+login_([A-Za-z0-9-]{16,40})(_p)?$/;
+async function handleLogin(env, u) {
+  const m = u.message, cq = u.callback_query;
+  const isOwner = (id) => env.OWNER_ID && String(id) === String(env.OWNER_ID);
+  if (m && LOGIN_START.test((m.text || "").trim())) {
+    const [, code, p] = (m.text || "").trim().match(LOGIN_START);
+    if (!env.LOGIN_URL || !env.LOGIN_SECRET) { await send(env, m.chat.id, { text: "Вход через Telegram ещё не настроен." }); return true; }
+    await send(env, m.chat.id, {
+      text: "🔐 <b>Вход в Колчан</b>" + (p ? " по номеру телефона" : "") + "\n\nНажми кнопку, если это ты сейчас входишь в приложение. Если ссылку прислал кто-то другой — ничего не нажимай.",
+      kb: kbd([[{ text: "✅ Войти в Колчан", callback_data: "lg:" + code + ":" + (p ? "p" : "t") }]]),
+    });
+    return true;
+  }
+  if (cq && /^lg:/.test(cq.data || "")) {
+    const [, code, mode] = cq.data.split(":");
+    await tg(env, "answerCallbackQuery", { callback_query_id: cq.id });
+    try {
+      await loginCall(env, { action: "confirm", code, mode: mode === "p" ? "phone" : "tg", tg: cq.from });
+      if (mode === "p") {
+        await send(env, cq.message.chat.id, { text: "✅ Почти готово. Теперь нажми «📱 Поделиться номером» внизу — так Telegram подтвердит, что номер твой.", kb: null, edit: true }, cq.message.message_id);
+        await tg(env, "sendMessage", { chat_id: cq.message.chat.id, text: "Кнопка внизу 👇", reply_markup: { keyboard: [[{ text: "📱 Поделиться номером", request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } });
+      } else {
+        await send(env, cq.message.chat.id, { text: "✅ Готово! Вернись в Колчан — вход выполнится сам." }, cq.message.message_id);
+      }
+    } catch (e) { await send(env, cq.message.chat.id, { text: "⚠ Не получилось: " + esc(e.message) + ". Начни вход в приложении заново." }, cq.message.message_id); }
+    return true;
+  }
+  if (m && m.contact) {
+    const back = isOwner(m.from.id) ? { menu: true } : { remove: true };
+    if (String(m.contact.user_id || "") !== String(m.from.id)) { await send(env, m.chat.id, Object.assign({ text: "Нужен твой собственный номер — нажми кнопку «📱 Поделиться номером»." }, back)); return true; }
+    try {
+      const r = await loginCall(env, { action: "phone", tg_id: m.from.id, phone: m.contact.phone_number });
+      await send(env, m.chat.id, Object.assign({ text: r.ok ? "✅ Номер подтверждён. Вернись в Колчан — вход выполнится сам." : "Не нашёл начатого входа. Начни вход по номеру в приложении заново." }, back));
+    } catch (e) { await send(env, m.chat.id, Object.assign({ text: "⚠ Не получилось: " + esc(e.message) }, back)); }
+    return true;
+  }
+  return false;
+}
+
 async function handleUpdate(env, u) {
   const from = (u.message && u.message.from) || (u.callback_query && u.callback_query.from);
   if (!from) return;
   const chatId = u.message ? u.message.chat.id : u.callback_query.message.chat.id;
+  if (await handleLogin(env, u)) return;
   if (!env.OWNER_ID) { await send(env, chatId, { text: "Твой Telegram ID: <code>" + from.id + "</code>\nВпиши его в переменную OWNER_ID в настройках Worker." }); return; }
   if (String(from.id) !== String(env.OWNER_ID)) return;   // чужим не отвечаем
   try {

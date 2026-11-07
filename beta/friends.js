@@ -50,6 +50,12 @@ header { flex-wrap: nowrap !important; align-items: center !important; }
 .ava-menu button:active { background: var(--bg); }
 .ava-menu button svg { width: 20px; height: 20px; flex: none; color: var(--muted); }
 .ava-menu button .warn { margin-left: auto; color: #d4553f; }
+/* frosted strip under the bottom buttons: the list blurs as it slides under them */
+.fab-blur { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; pointer-events: none;
+  height: calc(env(safe-area-inset-bottom, 0px) + 96px);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-mask-image: linear-gradient(to top, #000 62%, transparent); mask-image: linear-gradient(to top, #000 62%, transparent); }
 
 .inst-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; counter-reset: st; }
 .inst-steps > li { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; counter-increment: st; }
@@ -171,6 +177,12 @@ header { flex-wrap: nowrap !important; align-items: center !important; }
 
     // ---- avatar menu: «Аккаунт» (beta), «Отзыв», «Данные» live behind one round button ----
     if (AVA) {
+    const fb2 = document.createElement("div"); fb2.className = "fab-blur"; fb2.setAttribute("aria-hidden", "true");
+    document.body.appendChild(fb2);
+    // show the strip only while the bottom buttons are on screen
+    const syncBlur = () => { const a = $("add"); fb2.hidden = !a || a.hidden; };
+    if ($("add")) new MutationObserver(syncBlur).observe($("add"), { attributes: true, attributeFilter: ["hidden"] });
+    syncBlur();
     const right = $("data-open").parentElement;
     const ava = document.createElement("button"); ava.type = "button"; ava.className = "ava"; ava.id = "ava"; ava.setAttribute("aria-label", "Меню"); ava.setAttribute("aria-haspopup", "menu");
     const person = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';

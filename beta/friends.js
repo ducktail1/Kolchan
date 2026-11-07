@@ -50,6 +50,8 @@ header { flex-wrap: nowrap !important; align-items: center !important; }
 .ava-menu button:active { background: var(--bg); }
 .ava-menu button svg { width: 20px; height: 20px; flex: none; color: var(--muted); }
 .ava-menu button .warn { margin-left: auto; color: #d4553f; }
+.ava-menu button.out { color: #d4553f; border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; margin-top: 4px; }
+.ava-menu button.out svg { color: #d4553f; }
 /* centred title: menu + home on the left, avatar on the right, «Колчан» in the middle with the counter under it */
 header { position: relative; min-height: 48px; }
 header .tt { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); align-items: center; text-align: center; max-width: calc(100% - 190px); pointer-events: none; }
@@ -227,7 +229,7 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
       menu = document.createElement("div"); menu.className = "ava-menu"; menu.setAttribute("role", "menu");
       const acc = window.__kolchanAccount && window.__kolchanAccount();
       if ($("acc-open")) { const w = document.createElement("div"); w.className = "who"; w.textContent = acc ? (acc.email || "Аккаунт") : "Ты не вошёл"; menu.appendChild(w); }
-      [["acc-open", acc ? "Аккаунт" : "Войти"], ["fb-open", "Отзыв"], ["data-open", "Данные"]].forEach(([id, label]) => {
+      [["acc-open", acc ? "Аккаунт" : "Войти"], ["data-open", "Данные"], ["fb-open", "Отзыв"]].forEach(([id, label]) => {
         const src = $(id); if (!src) return;
         const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "menuitem");
         b.innerHTML = ICON[id] + "<span></span>" + (warnIn(id) ? '<span class="warn">⚠</span>' : "");
@@ -235,6 +237,12 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
         b.onclick = () => { closeMenu(); src.click(); };
         menu.appendChild(b);
       });
+      if (acc && window.__kolchanLogout) {
+        const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "menuitem"); b.className = "out";
+        b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5M5 12h11"/></svg><span>Выйти</span>';
+        b.onclick = () => { closeMenu(); window.__kolchanLogout(); };
+        menu.appendChild(b);
+      }
       right.appendChild(menu); ava.setAttribute("aria-expanded", "true");
     }
     ava.onclick = (e) => { e.stopPropagation(); if (menu) closeMenu(); else openMenu(); };

@@ -153,10 +153,13 @@
 .sheet-bg.gate .sheet > h2, .sheet-bg.gate #acc-out > .note:first-child { display: none; }
 .gate-head .logo { font-family: var(--font-display); font-size: 34px; font-weight: 700; }
 .gate-head p { color: var(--muted); margin: 8px 0 0; }
+.cloud-sync { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.cloud-sync .cs-t { font-weight: 600; }
 .beta-tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--accent-ink); background: var(--accent); border-radius: 6px; padding: 2px 6px; margin-left: 6px; vertical-align: middle; }
 `;
   let mode = "in";
-  function setState(text, bad) { const el = $("acc-state"); if (el) { el.textContent = text || ""; el.className = bad ? "err" : "note"; el.hidden = !text; } const b = $("acc-open"); if (b && session) b.textContent = bad ? "Аккаунт ⚠" : "Аккаунт"; }
+  // sync status lives in «Данные»; a problem marks that menu item (and the avatar) with ⚠
+  function setState(text, bad) { const el = $("acc-state"); if (el) { el.textContent = text || ""; el.className = bad ? "err" : "note"; } const b = $("data-open"); if (b) b.textContent = bad ? "Данные ⚠" : "Данные"; }
   window.__kolchanAccount = () => (session ? { email: session.user.email || "" } : null);
   // no session in the beta → the sign-in screen covers the app and cannot be closed
   function gate() {
@@ -170,7 +173,8 @@
     gate();
     if (window.__kolchanPaintAva) window.__kolchanPaintAva();
     const b = $("acc-open"); if (!b) return;
-    b.textContent = session ? (lastErr ? "Аккаунт ⚠" : "Аккаунт") : "Войти";
+    b.textContent = session ? "Аккаунт" : "Войти";
+    const cs = $("cloud-sync"); if (cs) cs.hidden = !session;
     $("acc-out").hidden = !!session; $("acc-in").hidden = !session;
     if (session) { const e = session.user.email || "без почты"; $("acc-mail").textContent = e; $("acc-ava").textContent = (e[0] || "?").toUpperCase(); }
     $("acc-tab-in").classList.toggle("on", mode === "in"); $("acc-tab-up").classList.toggle("on", mode === "up");
@@ -222,8 +226,7 @@
       '</div>' +
       '<div id="acc-in" hidden style="display:flex;flex-direction:column;gap:12px">' +
         '<div class="acc-me"><div class="acc-ava" id="acc-ava"></div><div><b id="acc-mail"></b><span class="note">База хранится онлайн и на этом телефоне</span></div></div>' +
-        '<div class="note" id="acc-state" hidden></div>' +
-        '<div class="row2"><button type="button" id="acc-sync">Синхронизировать</button><button type="button" class="danger" id="acc-logout">Выйти</button></div>' +
+
         '<div class="confirm" id="acc-logout-confirm" hidden><span>Выйти из аккаунта? Данные останутся в облаке, а с этого телефона будут убраны — при следующем входе вернутся.</span><div class="row2"><button type="button" id="acc-logout-no">Отмена</button><button type="button" class="danger" id="acc-logout-yes">Выйти</button></div></div>' +
       '</div>' +
       '<div class="actions"><div class="right"><button type="button" id="acc-close">Закрыть</button></div></div></div>';
@@ -261,8 +264,16 @@
       try { await resend(email); $("acc-err").className = "ok"; $("acc-err").textContent = "Отправил письмо на " + email + ". Открой его и нажми ссылку — вернёшься сюда уже в аккаунте."; $("acc-err").hidden = false; $("acc-resend").hidden = true; }
       catch (ex) { $("acc-err").className = "err"; err(ruErr(ex)); }
     };
+    // «Синхронизация» block in «Данные»: last sync time and a button
+    const dsheet = document.querySelector("#data-bg .sheet");
+    if (dsheet) {
+      const box = document.createElement("div"); box.id = "cloud-sync"; box.className = "cloud-sync"; box.hidden = true;
+      box.innerHTML = '<div class="cs-t">Синхронизация с аккаунтом</div><div class="note" id="acc-state"></div><button type="button" id="acc-sync">Синхронизировать сейчас</button>';
+      const btns = dsheet.querySelector(".dataBtns"); dsheet.insertBefore(box, btns);
+    }
     $("acc-sync").onclick = () => syncNow(true);
-    $("acc-logout").onclick = () => { $("acc-logout-confirm").hidden = false; };
+    // «Выйти» in the avatar menu opens the account window with the confirmation
+    window.__kolchanLogout = () => { err(""); paint(); sh.hidden = false; $("acc-logout-confirm").hidden = false; };
     $("acc-logout-no").onclick = () => { $("acc-logout-confirm").hidden = true; };
     $("acc-logout-yes").onclick = async () => {
       await syncNow(true);

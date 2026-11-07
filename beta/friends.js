@@ -201,6 +201,9 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
     const syncBlur = () => { const a = $("add"); fb2.hidden = !a || a.hidden; };
     if ($("add")) new MutationObserver(syncBlur).observe($("add"), { attributes: true, attributeFilter: ["hidden"] });
     syncBlur();
+    // bottom buttons: plain words, no «+» / «⇄»
+    if ($("add")) $("add").textContent = "Добавить";
+    if ($("mv-open")) $("mv-open").textContent = "Переместить";
     // «Данные»: «Резервная копия» block — last export, «Выгрузить файл» and «Загрузить файл» buttons
     const dbtns = $("data-bg") && $("data-bg").querySelector(".dataBtns");
     if (dbtns && $("d-import")) {

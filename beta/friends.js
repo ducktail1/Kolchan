@@ -50,6 +50,16 @@ header { flex-wrap: nowrap !important; align-items: center !important; }
 .ava-menu button:active { background: var(--bg); }
 .ava-menu button svg { width: 20px; height: 20px; flex: none; color: var(--muted); }
 .ava-menu button .warn { margin-left: auto; color: #d4553f; }
+/* centred title: menu + home on the left, avatar on the right, «Колчан» in the middle with the counter under it */
+header { position: relative; min-height: 48px; }
+header .tt { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); align-items: center; text-align: center; max-width: calc(100% - 190px); pointer-events: none; }
+header .tt > * { pointer-events: auto; }
+header .tt h1 { white-space: nowrap; }
+header .tt .tsub { display: flex; gap: 4px; justify-content: center; flex-wrap: nowrap; font-size: 12px; line-height: 1.2; white-space: nowrap; max-width: 100%; }
+header .tt .tsub .qname { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+header .tt .tsub .count { font-size: 12px; }
+header .tt .tsub .qname { font-size: 12px; }
+header .tt .tsub .qname:not([hidden])::before { content: "· "; }
 /* frosted strip under the bottom buttons: the list blurs as it slides under them */
 .fab-blur { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; pointer-events: none;
   height: calc(env(safe-area-inset-bottom, 0px) + 96px);
@@ -184,6 +194,9 @@ header { flex-wrap: nowrap !important; align-items: center !important; }
     if ($("add")) new MutationObserver(syncBlur).observe($("add"), { attributes: true, attributeFilter: ["hidden"] });
     syncBlur();
     const right = $("data-open").parentElement;
+    // the counter and the quiver name go under the centred title
+    const tt = document.querySelector("header .tt");
+    if (tt) { const sub = document.createElement("div"); sub.className = "tsub"; const cnt = $("count"), qn = $("q-cur"); if (cnt) sub.appendChild(cnt); if (qn) sub.appendChild(qn); tt.appendChild(sub); }
     const ava = document.createElement("button"); ava.type = "button"; ava.className = "ava"; ava.id = "ava"; ava.setAttribute("aria-label", "Меню"); ava.setAttribute("aria-haspopup", "menu");
     const person = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
     const ICON = {

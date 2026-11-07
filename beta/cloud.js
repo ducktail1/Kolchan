@@ -62,7 +62,7 @@
     const at = h.get("access_token"), rt = h.get("refresh_token"), exp = +h.get("expires_at") || 0;
     history.replaceState(null, "", location.pathname);
     const u = await api("/auth/v1/user", { headers: Object.assign(authHeaders(), { Authorization: "Bearer " + at }) });
-    await saveSession({ access_token: at, refresh_token: rt, expires_at: exp ? exp * 1000 : Date.now() + 3600000, user: { id: u.id, email: u.email || "" } });
+    await saveSession({ access_token: at, refresh_token: rt, expires_at: exp ? exp * 1000 : Date.now() + 3600000, user: { id: u.id, email: u.email || "", meta: metaOf(u) } });
     return "ok";
   }
   async function resend(email) {

@@ -1,0 +1,251 @@
+// Колчан (бета): аккаунт и онлайн-база в Supabase.
+// Телефон по-прежнему главный: всё лежит в IndexedDB и работает без сети,
+// а при входе база объединяется с облаком (те же правила, что у синхронизации с GitHub).
+(function () {
+  "use strict";
+  const CFG = window.__CLOUD || {};
+  const $ = (id) => document.getElementById(id);
+  const K = window.__kolchan;
+  const S = window.__kolchanSync;            // { merge, sameData, DATA }
+  const DATA = S.DATA;
+  const fmt = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const ready = !!(CFG.url && CFG.key);
+
+  // ---------- auth (Supabase GoTrue over plain fetch) ----------
+  let session = null;   // { access_token, refresh_token, expires_at, user: { id, email } }
+  const saveSession = async (s) => { session = s; if (s) await K.put("meta", Object.assign({ key: "cloudSession" }, s)); else await K.put("meta", { key: "cloudSession", none: true }); paint(); if (window.__kolchanRemind) window.__kolchanRemind(); };
+  const fromAuth = (j) => ({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at ? j.expires_at * 1000 : Date.now() + (j.expires_in || 3600) * 1000, user: { id: j.user && j.user.id, email: (j.user && (j.user.email || (j.user.user_metadata && j.user.user_metadata.email))) || "" } });
+
+  async function api(path, opt) {
+    let r;
+    try { r = await fetch(CFG.url + path, Object.assign({ cache: "no-store" }, opt)); }
+    catch (e) { const x = new Error("network"); x.code = "network"; throw x; }
+    let j = null; try { j = await r.json(); } catch (e) {}
+    if (!r.ok) { const x = new Error((j && (j.msg || j.message || j.error_description || j.error)) || ("http " + r.status)); x.status = r.status; x.code = (j && (j.error_code || j.code)) || ""; throw x; }
+    return j;
+  }
+  const authHeaders = () => ({ apikey: CFG.key, "Content-Type": "application/json" });
+  async function signUp(email, password) {
+    const j = await api("/auth/v1/signup", { method: "POST", headers: authHeaders(), body: JSON.stringify({ email, password }) });
+    if (j && j.access_token) { await saveSession(fromAuth(j)); return "in"; }
+    return "confirm";   // the project asks to confirm the address by e-mail
+  }
+  async function signIn(email, password) {
+    const j = await api("/auth/v1/token?grant_type=password", { method: "POST", headers: authHeaders(), body: JSON.stringify({ email, password }) });
+    await saveSession(fromAuth(j));
+  }
+  async function refresh() {
+    if (!session || !session.refresh_token) throw Object.assign(new Error("no session"), { status: 401 });
+    const j = await api("/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: authHeaders(), body: JSON.stringify({ refresh_token: session.refresh_token }) });
+    await saveSession(fromAuth(j));
+  }
+  async function token() {
+    if (!session) return null;
+    if (Date.now() > session.expires_at - 60000) await refresh();
+    return session.access_token;
+  }
+  async function signOut() {
+    try { const t = await token(); if (t) await fetch(CFG.url + "/auth/v1/logout", { method: "POST", headers: Object.assign(authHeaders(), { Authorization: "Bearer " + t }) }); } catch (e) {}
+    await saveSession(null);
+  }
+  // OAuth providers (Google и др.) come back with tokens in the address: #access_token=…&refresh_token=…
+  async function takeRedirect() {
+    const h = new URLSearchParams(location.hash.slice(1));
+    if (h.get("error_description")) { history.replaceState(null, "", location.pathname); return "Вход не удался: " + h.get("error_description"); }
+    if (!h.get("access_token")) return null;
+    const at = h.get("access_token"), rt = h.get("refresh_token"), exp = +h.get("expires_at") || 0;
+    history.replaceState(null, "", location.pathname);
+    const u = await api("/auth/v1/user", { headers: Object.assign(authHeaders(), { Authorization: "Bearer " + at }) });
+    await saveSession({ access_token: at, refresh_token: rt, expires_at: exp ? exp * 1000 : Date.now() + 3600000, user: { id: u.id, email: u.email || "" } });
+    return "ok";
+  }
+  const oauthUrl = (provider) => CFG.url + "/auth/v1/authorize?provider=" + provider + "&redirect_to=" + encodeURIComponent(location.origin + location.pathname);
+
+  // ---------- data: one table "records" (user_id, coll, id, data, deleted, updated_at) ----------
+  async function rest(path, opt) {
+    const t = await token();
+    const headers = Object.assign({ apikey: CFG.key, Authorization: "Bearer " + t, "Content-Type": "application/json" }, (opt && opt.headers) || {});
+    try { return await api("/rest/v1/" + path, Object.assign({}, opt, { headers })); }
+    catch (e) { if (e.status === 401 && !(opt && opt._retry)) { await refresh(); return rest(path, Object.assign({}, opt, { _retry: true })); } throw e; }
+  }
+  async function pullAll() {
+    const rows = [];
+    for (let from = 0; ; from += 1000) {
+      const part = await rest("records?select=coll,id,data,deleted&order=coll,id", { headers: { Range: from + "-" + (from + 999), "Range-Unit": "items" } });
+      rows.push(...(part || []));
+      if (!part || part.length < 1000) break;
+    }
+    const out = Object.fromEntries(DATA.map(c => [c, []]));
+    const dead = Object.fromEntries(DATA.map(c => [c, new Set()]));
+    rows.forEach(r => { if (!out[r.coll]) return; if (r.deleted) dead[r.coll].add(r.id); else out[r.coll].push(Object.assign({}, r.data, { id: r.id })); });
+    return { data: out, dead };
+  }
+  async function upsert(rows) {
+    for (let i = 0; i < rows.length; i += 200) {
+      await rest("records?on_conflict=user_id,coll,id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(rows.slice(i, i + 200)) });
+    }
+  }
+  const canon = (o) => JSON.stringify(Object.keys(o).filter(k => k !== "_t").sort().reduce((m, k) => (m[k] = o[k], m), {}));
+
+  let running = null, timer = null, lastErr = "";
+  async function syncNow(manual) {
+    if (!ready || !session) return;
+    if (running) return running;
+    running = (async () => {
+      if (!navigator.onLine) { setState("Нет интернета — синхронизирую, когда появится."); return; }
+      setState("Синхронизирую…");
+      try {
+        const local = Object.fromEntries(await Promise.all(DATA.map(async c => [c, await K.all(c)])));
+        const remote = await pullAll();
+        const base = await K.get("meta", "cloudBase");
+        const baseIds = base && base.user === session.user.id ? base.ids : null;
+        const merged = S.merge(local, remote.data, baseIds);
+        // send what differs from the cloud; mark as deleted what the cloud has but the merge dropped
+        const rows = [], uid = session.user.id;
+        DATA.forEach(c => {
+          const R = new Map(remote.data[c].map(r => [r.id, r]));
+          const M = new Set(merged[c].map(r => r.id));
+          merged[c].forEach(r => { const o = R.get(r.id); if (!o || canon(o) !== canon(r)) { const d = Object.assign({}, r); delete d.id; rows.push({ user_id: uid, coll: c, id: r.id, data: d, deleted: false }); } });
+          remote.data[c].forEach(r => { if (!M.has(r.id)) rows.push({ user_id: uid, coll: c, id: r.id, data: {}, deleted: true }); });
+        });
+        if (rows.length) await upsert(rows);
+        if (!S.sameData(merged, local)) { await K.replaceData(merged); await Promise.all(DATA.map(K.emit)); }
+        const t = Date.now();
+        await K.put("meta", { key: "cloudBase", t, user: uid, ids: Object.fromEntries(DATA.map(c => [c, merged[c].map(r => r.id)])) });
+        lastErr = "";
+        setState("Синхронизировано: " + fmt.format(new Date(t)));
+      } catch (e) {
+        lastErr = e.code === "network" ? "Нет связи с сервером. Если интернет есть — возможно, сервер заблокирован." : e.status === 401 || e.status === 403 ? "Вход устарел — войди заново." : "Не получилось синхронизировать: " + e.message;
+        if (e.status === 401) await saveSession(null);
+        setState(lastErr, true);
+      }
+    })();
+    try { await running; } finally { running = null; }
+  }
+  // changes on the phone → sync a few seconds later (replaces the GitHub sync in the beta)
+  window.__syncSoon = () => { clearTimeout(timer); timer = setTimeout(() => syncNow(false), 4000); };
+
+  // ---------- UI ----------
+  const css = `
+.acc-btn { font-weight: 600; }
+.acc-tabs { display: flex; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
+.acc-tabs button { flex: 1; border: 0; background: none; padding: 10px; border-radius: 9px; font-weight: 600; color: var(--muted); }
+.acc-tabs button.on { background: var(--accent); color: var(--accent-ink); }
+.acc-or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.acc-or::before, .acc-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.acc-prov { display: flex; flex-direction: column; gap: 8px; }
+.acc-prov button { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px; font-weight: 600; }
+.acc-prov button[disabled] { opacity: .5; }
+.acc-prov small { font-weight: 400; color: var(--muted); }
+.acc-me { display: flex; align-items: center; gap: 12px; }
+.acc-ava { width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-weight: 700; font-size: 18px; flex: none; }
+.acc-me b { display: block; overflow-wrap: anywhere; }
+.beta-tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--accent-ink); background: var(--accent); border-radius: 6px; padding: 2px 6px; margin-left: 6px; vertical-align: middle; }
+`;
+  let mode = "in";
+  function setState(text, bad) { const el = $("acc-state"); if (el) { el.textContent = text || ""; el.className = bad ? "err" : "note"; el.hidden = !text; } const b = $("acc-open"); if (b && session) b.textContent = bad ? "Аккаунт ⚠" : "Аккаунт"; }
+  function paint() {
+    const b = $("acc-open"); if (!b) return;
+    b.textContent = session ? (lastErr ? "Аккаунт ⚠" : "Аккаунт") : "Войти";
+    $("acc-out").hidden = !!session; $("acc-in").hidden = !session;
+    if (session) { const e = session.user.email || "без почты"; $("acc-mail").textContent = e; $("acc-ava").textContent = (e[0] || "?").toUpperCase(); }
+    $("acc-tab-in").classList.toggle("on", mode === "in"); $("acc-tab-up").classList.toggle("on", mode === "up");
+    $("acc-go").textContent = mode === "in" ? "Войти" : "Зарегистрироваться";
+    $("acc-pass").autocomplete = mode === "in" ? "current-password" : "new-password";
+    $("acc-pass2-wrap").hidden = mode !== "up";
+  }
+  function err(t) { const e = $("acc-err"); e.textContent = t || ""; e.hidden = !t; }
+  const ruErr = (e) => {
+    const m = (e.message || "").toLowerCase(), c = e.code || "";
+    if (e.code === "network") return "Нет связи с сервером. Проверь интернет; если он есть — сервер может быть заблокирован, попробуй с VPN.";
+    if (c === "invalid_credentials" || m.includes("invalid login")) return "Неверная почта или пароль.";
+    if (c === "user_already_exists" || m.includes("already registered")) return "Эта почта уже зарегистрирована — войди.";
+    if (c === "weak_password" || m.includes("password should be")) return "Пароль слишком простой: нужно минимум 6 символов.";
+    if (c === "email_not_confirmed" || m.includes("not confirmed")) return "Почта не подтверждена — открой письмо и нажми ссылку.";
+    if (c === "over_email_send_rate_limit" || m.includes("rate limit")) return "Слишком много попыток. Подожди немного.";
+    if (c === "validation_failed" || m.includes("invalid format") || m.includes("unable to validate email")) return "Проверь адрес почты.";
+    return "Не получилось: " + e.message;
+  };
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
+    const h1 = document.querySelector("header h1"); if (h1) { const t = document.createElement("span"); t.className = "beta-tag"; t.textContent = "β"; h1.appendChild(t); }
+    const sbox = $("s-box"); if (sbox) sbox.hidden = true;   // GitHub sync is replaced by the account in the beta
+    const dataBtn = $("data-open");
+    const ab = document.createElement("button"); ab.type = "button"; ab.className = "link acc-btn"; ab.id = "acc-open"; ab.textContent = "Войти";
+    dataBtn.parentElement.insertBefore(ab, dataBtn);
+    const sh = document.createElement("div"); sh.className = "sheet-bg"; sh.id = "acc-bg"; sh.hidden = true;
+    const prov = (CFG.providers || []);
+    const pbtn = (id, label, icon) => '<button type="button" data-p="' + id + '"' + (prov.includes(id) ? "" : " disabled") + '>' + icon + label + (prov.includes(id) ? "" : " <small>скоро</small>") + "</button>";
+    sh.innerHTML = '<div class="sheet"><h2>Аккаунт</h2>' +
+      '<div id="acc-out">' +
+        '<div class="note" style="margin-bottom:12px">Войди, чтобы база хранилась онлайн и была одинаковой на всех устройствах. Без входа всё работает как раньше — только на этом телефоне.</div>' +
+        '<div class="acc-tabs"><button type="button" id="acc-tab-in">Вход</button><button type="button" id="acc-tab-up">Регистрация</button></div>' +
+        '<form id="acc-form" novalidate style="display:flex;flex-direction:column;gap:12px;margin-top:12px">' +
+          '<label>Почта<input id="acc-mail-in" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com"></label>' +
+          '<label>Пароль<input id="acc-pass" type="password" placeholder="минимум 6 символов"></label>' +
+          '<label id="acc-pass2-wrap" hidden>Пароль ещё раз<input id="acc-pass2" type="password" autocomplete="new-password"></label>' +
+          '<div class="err" id="acc-err" hidden></div>' +
+          '<button type="submit" class="primary" id="acc-go">Войти</button>' +
+        '</form>' +
+        '<div class="acc-or" style="margin:14px 0">или</div>' +
+        '<div class="acc-prov">' + pbtn("telegram", "Telegram", "✈️ ") + pbtn("google", "Google", "G ") + pbtn("yandex", "Яндекс ID", "Я ") + '</div>' +
+      '</div>' +
+      '<div id="acc-in" hidden style="display:flex;flex-direction:column;gap:12px">' +
+        '<div class="acc-me"><div class="acc-ava" id="acc-ava"></div><div><b id="acc-mail"></b><span class="note">База хранится онлайн и на этом телефоне</span></div></div>' +
+        '<div class="note" id="acc-state" hidden></div>' +
+        '<div class="row2"><button type="button" id="acc-sync">Синхронизировать</button><button type="button" class="danger" id="acc-logout">Выйти</button></div>' +
+        '<div class="confirm" id="acc-logout-confirm" hidden><span>Выйти из аккаунта? Данные останутся в облаке, а с этого телефона будут убраны — при следующем входе вернутся.</span><div class="row2"><button type="button" id="acc-logout-no">Отмена</button><button type="button" class="danger" id="acc-logout-yes">Выйти</button></div></div>' +
+      '</div>' +
+      '<div class="actions"><div class="right"><button type="button" id="acc-close">Закрыть</button></div></div></div>';
+    document.body.appendChild(sh);
+    $("acc-out").style.display = "";
+    const open = () => { err(""); paint(); sh.hidden = false; };
+    ab.onclick = open;
+    $("acc-close").onclick = () => { sh.hidden = true; };
+    sh.addEventListener("click", (e) => { if (e.target === sh) sh.hidden = true; });
+    $("acc-tab-in").onclick = () => { mode = "in"; err(""); paint(); };
+    $("acc-tab-up").onclick = () => { mode = "up"; err(""); paint(); };
+    sh.querySelectorAll("[data-p]").forEach(b => b.onclick = () => { if (!b.disabled) location.href = oauthUrl(b.dataset.p); });
+    $("acc-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!ready) { err("Сервер ещё не настроен."); return; }
+      const email = $("acc-mail-in").value.trim(), pass = $("acc-pass").value;
+      if (!/^\S+@\S+\.\S+$/.test(email)) { err("Проверь адрес почты."); return; }
+      if (pass.length < 6) { err("Пароль — минимум 6 символов."); return; }
+      if (mode === "up" && pass !== $("acc-pass2").value) { err("Пароли не совпадают."); return; }
+      const go = $("acc-go"); go.disabled = true; err("");
+      try {
+        if (mode === "up") { const r = await signUp(email, pass); if (r === "confirm") { err(""); $("acc-err").className = "ok"; $("acc-err").textContent = "Почти готово: открой письмо на " + email + " и подтверди адрес, потом войди."; $("acc-err").hidden = false; return; } }
+        else await signIn(email, pass);
+        $("acc-pass").value = ""; $("acc-pass2").value = "";
+        paint(); syncNow(true);
+      } catch (ex) { $("acc-err").className = "err"; err(ruErr(ex)); }
+      finally { go.disabled = false; }
+    });
+    $("acc-sync").onclick = () => syncNow(true);
+    $("acc-logout").onclick = () => { $("acc-logout-confirm").hidden = false; };
+    $("acc-logout-no").onclick = () => { $("acc-logout-confirm").hidden = true; };
+    $("acc-logout-yes").onclick = async () => {
+      await syncNow(true);
+      await signOut();
+      await K.replaceData(Object.fromEntries(DATA.map(c => [c, []]))); await Promise.all(DATA.map(K.emit));
+      await K.put("meta", { key: "cloudBase", none: true });
+      $("acc-logout-confirm").hidden = true; setState(""); paint();
+    };
+
+    const s = await K.get("meta", "cloudSession");
+    session = s && s.access_token ? { access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at, user: s.user } : null;
+    paint();
+    if (ready) {
+      try { const r = await takeRedirect(); if (r && r !== "ok") { open(); err(r); } } catch (e) { open(); err(ruErr(e)); }
+      if (session) {
+        const base = await K.get("meta", "cloudBase");
+        setState(base && base.t ? "Синхронизировано: " + fmt.format(new Date(base.t)) : "");
+        syncNow(false);
+      }
+    }
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") syncNow(false); });
+    window.addEventListener("online", () => syncNow(false));
+  });
+})();

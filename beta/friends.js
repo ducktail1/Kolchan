@@ -33,6 +33,10 @@ details.sync { border: 1px solid var(--line); border-radius: 12px; padding: 10px
 details.sync summary { cursor: pointer; font-weight: 600; font-size: 15px; }
 details.sync[open] summary { margin-bottom: 10px; }
 details.sync > *:not(summary) { margin-top: 8px; }
+`;
+
+  const AVA = !!window.__KOLCHAN_AVA;   // avatar menu: beta only for now
+  const avaCss = `
 /* avatar menu (top right): account, feedback, data */
 header { flex-wrap: nowrap !important; align-items: center !important; }
 .hdr-right { align-items: center !important; flex: none; position: relative; }
@@ -63,9 +67,8 @@ header { flex-wrap: nowrap !important; align-items: center !important; }
 .mock svg { width: 20px; height: 20px; flex: none; }
 .inst-warn { background: var(--tape); color: var(--tape-ink); border-radius: 12px; padding: 10px 12px; font-size: 14px; line-height: 1.4; }
 `;
-
   document.addEventListener("DOMContentLoaded", async () => {
-    const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
+    const st = document.createElement("style"); st.textContent = css + (AVA ? avaCss : ""); document.head.appendChild(st);
     const wrap = document.querySelector(".wrap");
     const anchor = $("crumbs");
 
@@ -167,6 +170,7 @@ header { flex-wrap: nowrap !important; align-items: center !important; }
     }
 
     // ---- avatar menu: «Аккаунт» (beta), «Отзыв», «Данные» live behind one round button ----
+    if (AVA) {
     const right = $("data-open").parentElement;
     const ava = document.createElement("button"); ava.type = "button"; ava.className = "ava"; ava.id = "ava"; ava.setAttribute("aria-label", "Меню"); ava.setAttribute("aria-haspopup", "menu");
     const person = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
@@ -208,6 +212,7 @@ header { flex-wrap: nowrap !important; align-items: center !important; }
       ["acc-open", "data-open"].forEach(id => { const b = $(id); if (b) new MutationObserver(paintAva).observe(b, { childList: true, characterData: true, subtree: true }); });
       paintAva();
     }, 0);
+    }
 
     // data from the store
     const store = window.__store || window.claude;

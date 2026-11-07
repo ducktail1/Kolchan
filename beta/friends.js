@@ -33,6 +33,29 @@ details.sync { border: 1px solid var(--line); border-radius: 12px; padding: 10px
 details.sync summary { cursor: pointer; font-weight: 600; font-size: 15px; }
 details.sync[open] summary { margin-bottom: 10px; }
 details.sync > *:not(summary) { margin-top: 8px; }
+`;
+
+  const AVA = !!window.__KOLCHAN_AVA;   // avatar menu: beta only for now
+  const avaCss = `
+/* avatar menu (top right): account, feedback, data */
+header { flex-wrap: nowrap !important; align-items: center !important; }
+.hdr-right { align-items: center !important; flex: none; position: relative; }
+.hdr-right > .link { display: none !important; }
+.ava { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); display: grid; place-items: center; padding: 0; font-weight: 700; font-size: 16px; position: relative; flex: none; }
+.ava.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.ava .dot { position: absolute; top: -1px; right: -1px; width: 11px; height: 11px; border-radius: 50%; background: #d4553f; border: 2px solid var(--bg); }
+.ava-menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; min-width: 220px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 12px 32px rgba(0,0,0,.25); padding: 6px; display: flex; flex-direction: column; }
+.ava-menu .who { padding: 10px 12px 8px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); margin-bottom: 4px; overflow-wrap: anywhere; }
+.ava-menu button { display: flex; align-items: center; gap: 12px; border: 0; background: none; color: var(--ink); text-align: left; padding: 12px; border-radius: 10px; font-size: 16px; }
+.ava-menu button:active { background: var(--bg); }
+.ava-menu button svg { width: 20px; height: 20px; flex: none; color: var(--muted); }
+.ava-menu button .warn { margin-left: auto; color: #d4553f; }
+/* frosted strip under the bottom buttons: the list blurs as it slides under them */
+.fab-blur { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; pointer-events: none;
+  height: calc(env(safe-area-inset-bottom, 0px) + 96px);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-mask-image: linear-gradient(to top, #000 62%, transparent); mask-image: linear-gradient(to top, #000 62%, transparent); }
 
 .inst-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; counter-reset: st; }
 .inst-steps > li { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; counter-increment: st; }
@@ -50,9 +73,8 @@ details.sync > *:not(summary) { margin-top: 8px; }
 .mock svg { width: 20px; height: 20px; flex: none; }
 .inst-warn { background: var(--tape); color: var(--tape-ink); border-radius: 12px; padding: 10px 12px; font-size: 14px; line-height: 1.4; }
 `;
-
   document.addEventListener("DOMContentLoaded", async () => {
-    const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
+    const st = document.createElement("style"); st.textContent = css + (AVA ? avaCss : ""); document.head.appendChild(st);
     const wrap = document.querySelector(".wrap");
     const anchor = $("crumbs");
 
@@ -151,6 +173,57 @@ details.sync > *:not(summary) { margin-top: 8px; }
       const dSheet = $("data-bg") && $("data-bg").querySelector(".dataBtns");
       if (dSheet) { const b2 = document.createElement("button"); b2.type = "button"; b2.textContent = "Как поставить на экран «Домой»"; b2.onclick = () => { $("data-bg").hidden = true; window.__showInstall(); }; dSheet.appendChild(b2); }
       if (!window.__KOLCHAN_SEED && (window.__KOLCHAN_PREVIEW || !lsGet("kolchanb.installSeen"))) setTimeout(window.__showInstall, 400);
+    }
+
+    // ---- avatar menu: «Аккаунт» (beta), «Отзыв», «Данные» live behind one round button ----
+    if (AVA) {
+    const fb2 = document.createElement("div"); fb2.className = "fab-blur"; fb2.setAttribute("aria-hidden", "true");
+    document.body.appendChild(fb2);
+    // show the strip only while the bottom buttons are on screen
+    const syncBlur = () => { const a = $("add"); fb2.hidden = !a || a.hidden; };
+    if ($("add")) new MutationObserver(syncBlur).observe($("add"), { attributes: true, attributeFilter: ["hidden"] });
+    syncBlur();
+    const right = $("data-open").parentElement;
+    const ava = document.createElement("button"); ava.type = "button"; ava.className = "ava"; ava.id = "ava"; ava.setAttribute("aria-label", "Меню"); ava.setAttribute("aria-haspopup", "menu");
+    const person = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
+    const ICON = {
+      "acc-open": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>',
+      "fb-open": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+      "data-open": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>'
+    };
+    right.appendChild(ava);
+    let menu = null;
+    const warnIn = (id) => { const b = $(id); return !!(b && /⚠/.test(b.textContent)); };
+    function paintAva() {
+      const acc = window.__kolchanAccount && window.__kolchanAccount();
+      const warn = ["acc-open", "data-open"].some(warnIn);
+      ava.classList.toggle("on", !!acc);
+      ava.innerHTML = (acc ? '<span>' + ((acc.email || "?")[0] || "?").toUpperCase() + "</span>" : person) + (warn ? '<span class="dot"></span>' : "");
+    }
+    function closeMenu() { if (menu) { menu.remove(); menu = null; ava.setAttribute("aria-expanded", "false"); } }
+    function openMenu() {
+      closeMenu();
+      menu = document.createElement("div"); menu.className = "ava-menu"; menu.setAttribute("role", "menu");
+      const acc = window.__kolchanAccount && window.__kolchanAccount();
+      if ($("acc-open")) { const w = document.createElement("div"); w.className = "who"; w.textContent = acc ? (acc.email || "Аккаунт") : "Ты не вошёл"; menu.appendChild(w); }
+      [["acc-open", acc ? "Аккаунт" : "Войти"], ["fb-open", "Отзыв"], ["data-open", "Данные"]].forEach(([id, label]) => {
+        const src = $(id); if (!src) return;
+        const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "menuitem");
+        b.innerHTML = ICON[id] + "<span></span>" + (warnIn(id) ? '<span class="warn">⚠</span>' : "");
+        b.querySelector("span").textContent = label;
+        b.onclick = () => { closeMenu(); src.click(); };
+        menu.appendChild(b);
+      });
+      right.appendChild(menu); ava.setAttribute("aria-expanded", "true");
+    }
+    ava.onclick = (e) => { e.stopPropagation(); if (menu) closeMenu(); else openMenu(); };
+    document.addEventListener("click", (e) => { if (menu && !menu.contains(e.target)) closeMenu(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+    window.__kolchanPaintAva = paintAva;
+    setTimeout(() => {
+      ["acc-open", "data-open"].forEach(id => { const b = $(id); if (b) new MutationObserver(paintAva).observe(b, { childList: true, characterData: true, subtree: true }); });
+      paintAva();
+    }, 0);
     }
 
     // data from the store

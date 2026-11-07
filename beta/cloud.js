@@ -14,7 +14,11 @@
   // ---------- auth (Supabase GoTrue over plain fetch) ----------
   let session = null;   // { access_token, refresh_token, expires_at, user: { id, email } }
   const saveSession = async (s) => { session = s; if (s) await K.put("meta", Object.assign({ key: "cloudSession" }, s)); else await K.put("meta", { key: "cloudSession", none: true }); paint(); if (window.__kolchanRemind) window.__kolchanRemind(); };
-  const fromAuth = (j) => ({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at ? j.expires_at * 1000 : Date.now() + (j.expires_in || 3600) * 1000, user: { id: j.user && j.user.id, email: (j.user && (j.user.email || (j.user.user_metadata && j.user.user_metadata.email))) || "" } });
+  const metaOf = (u) => { const m = (u && u.user_metadata) || {}; return { name: m.name || "", phone: m.phone || "", tg_id: m.tg_id || null, tg_username: m.tg_username || "" }; };
+  const fromAuth = (j) => ({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at ? j.expires_at * 1000 : Date.now() + (j.expires_in || 3600) * 1000, user: { id: j.user && j.user.id, email: (j.user && (j.user.email || (j.user.user_metadata && j.user.user_metadata.email))) || "", meta: metaOf(j.user) } });
+  // accounts made through Telegram get a service address that is never shown
+  const realEmail = (e) => (e && !/@tg\.kolchan\.app$/i.test(e) ? e : "");
+  const shownName = (u) => (u.meta && u.meta.name) || realEmail(u.email) || (u.meta && u.meta.phone) || (u.meta && u.meta.tg_username ? "@" + u.meta.tg_username : "") || "Аккаунт";
 
   async function api(path, opt) {
     let r;
@@ -130,6 +134,70 @@
   // changes on the phone → sync a few seconds later (replaces the GitHub sync in the beta)
   window.__syncSoon = () => { clearTimeout(timer); timer = setTimeout(() => syncNow(false), 4000); };
 
+  // ---------- Telegram / phone sign-in through the bot ----------
+  // The app makes a one-time code, opens the bot with it, and asks the tg-auth function until the bot confirms.
+  const FN = () => CFG.url + "/functions/v1/tg-auth";
+  let tgPend = null, tgTimer = null;
+  const randCode = () => { const a = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", r = new Uint8Array(32); crypto.getRandomValues(r); return [...r].map(x => a[x % a.length]).join(""); };
+  const tgLink = (p) => "https://t.me/" + (CFG.tgBot || "") + "?start=login_" + p.code + (p.mode === "phone" ? "_p" : "");
+  function waitUi(on) {
+    const sh = $("acc-bg"); if (!sh) return;
+    $("acc-wait").hidden = !on;
+    if (on) { $("acc-out").hidden = true; $("acc-in").hidden = true; sh.hidden = false; } else paint();
+  }
+  async function tgStart(mode, link) {
+    if (!ready || !CFG.tgBot) return;
+    tgPend = { code: randCode(), mode, link: !!link, t: Date.now() };
+    // open Telegram right away, while the tap still counts (otherwise the browser may block it)
+    const w = window.open(tgLink(tgPend), "_blank");
+    await K.put("meta", Object.assign({ key: "tgPending" }, tgPend));
+    $("acc-wait-t").textContent = link ? "Привяжи Telegram" : mode === "phone" ? "Подтверди номер в Telegram" : "Подтверди вход в Telegram";
+    $("acc-wait-n").textContent = "В боте @" + CFG.tgBot + " нажми «Войти в Колчан»" + (mode === "phone" ? ", потом «📱 Поделиться номером»" : "") + " и вернись сюда — дальше всё произойдёт само.";
+    $("acc-wait-open").href = tgLink(tgPend);
+    $("acc-wait-err").hidden = true;
+    waitUi(true);
+    if (!w) location.href = tgLink(tgPend);
+    tgLoop();
+  }
+  async function tgStop(cancel) {
+    clearTimeout(tgTimer); tgTimer = null; tgPend = null;
+    await K.put("meta", { key: "tgPending", none: true });
+    if (cancel) waitUi(false);
+  }
+  function tgLoop() { clearTimeout(tgTimer); tgTimer = setTimeout(tgPoll, 2500); }
+  async function tgPoll() {
+    const p = tgPend; if (!p) return;
+    if (Date.now() - p.t > 10 * 60000) { $("acc-wait-err").textContent = "Время вышло. Нажми «Отмена» и начни вход заново."; $("acc-wait-err").hidden = false; await tgStop(false); return; }
+    try {
+      const headers = { "Content-Type": "application/json", apikey: CFG.key };
+      if (p.link && session) headers.Authorization = "Bearer " + (await token());
+      const r = await fetch(FN(), { method: "POST", headers, body: JSON.stringify({ action: "poll", code: p.code, link: p.link }), cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 410) { $("acc-wait-err").textContent = "Время вышло. Нажми «Отмена» и начни вход заново."; $("acc-wait-err").hidden = false; await tgStop(false); return; }
+      if (!r.ok) throw Object.assign(new Error(j.error || ("http " + r.status)), { status: r.status });
+      if (j.pending) { tgLoop(); return; }
+      if (j.linked && session) {
+        session.user.meta = Object.assign({}, session.user.meta, metaOf({ user_metadata: j.user_metadata }));
+        await saveSession(session); await tgStop(false); waitUi(false);
+        $("acc-in-msg").textContent = "Telegram привязан — теперь можно входить и через него."; $("acc-in-msg").hidden = false;
+        return;
+      }
+      if (j.session) {
+        const fromGate = $("acc-bg").classList.contains("gate");
+        await tgStop(false);
+        await saveSession(fromAuth(j.session));
+        $("acc-wait").hidden = true; paint();
+        if (fromGate) $("acc-bg").hidden = true;
+        syncNow(true);
+        return;
+      }
+      tgLoop();
+    } catch (e) {
+      if (e.status === 409 || e.status === 401) { $("acc-wait-err").textContent = e.message; $("acc-wait-err").hidden = false; await tgStop(false); return; }
+      tgLoop();   // нет сети или сервер не ответил — пробуем дальше
+    }
+  }
+
   // ---------- UI ----------
   const css = `
 .acc-btn { font-weight: 600; }
@@ -160,7 +228,7 @@
   let mode = "in";
   // sync status lives in «Данные»; a problem marks that menu item (and the avatar) with ⚠
   function setState(text, bad) { const el = $("acc-state"); if (el) { el.textContent = text || ""; el.className = bad ? "err" : "note"; } const b = $("data-open"); if (b) b.textContent = bad ? "Данные ⚠" : "Данные"; }
-  window.__kolchanAccount = () => (session ? { email: session.user.email || "" } : null);
+  window.__kolchanAccount = () => (session ? { email: shownName(session.user) } : null);
   // no session in the beta → the sign-in screen covers the app and cannot be closed
   function gate() {
     const sh = $("acc-bg"); if (!sh || !ready) return;
@@ -176,7 +244,14 @@
     b.textContent = session ? "Аккаунт" : "Войти";
     const cs = $("cloud-sync"); if (cs) cs.hidden = !session;
     $("acc-out").hidden = !!session; $("acc-in").hidden = !session;
-    if (session) { const e = session.user.email || "без почты"; $("acc-mail").textContent = e; $("acc-ava").textContent = (e[0] || "?").toUpperCase(); }
+    if ($("acc-wait") && !$("acc-wait").hidden) { $("acc-out").hidden = true; $("acc-in").hidden = true; }
+    if (session) {
+      const u = session.user, m = u.meta || {}, nm = shownName(u);
+      $("acc-mail").textContent = nm; $("acc-ava").textContent = (nm[0] || "?").toUpperCase();
+      const lines = [realEmail(u.email) && realEmail(u.email) !== nm ? "✉️ " + realEmail(u.email) : "", m.phone ? "📱 " + m.phone : "", m.tg_id ? "✈️ Telegram" + (m.tg_username ? " @" + m.tg_username : "") : ""].filter(Boolean);
+      $("acc-ids").textContent = lines.join("\n"); $("acc-ids").hidden = !lines.length;
+      $("acc-link-tg").hidden = !!m.tg_id || !(CFG.providers || []).includes("telegram");
+    }
     $("acc-tab-in").classList.toggle("on", mode === "in"); $("acc-tab-up").classList.toggle("on", mode === "up");
     $("acc-go").textContent = mode === "in" ? "Войти" : "Зарегистрироваться";
     $("acc-pass").autocomplete = mode === "in" ? "current-password" : "new-password";
@@ -222,12 +297,22 @@
           '<button type="submit" class="primary" id="acc-go">Войти</button>' +
         '</form>' +
         '<div class="acc-or" style="margin:14px 0">или</div>' +
-        '<div class="acc-prov">' + pbtn("telegram", "Telegram", "✈️ ") + pbtn("google", "Google", "G ") + pbtn("yandex", "Яндекс ID", "Я ") + '</div>' +
+        '<div class="acc-prov">' + pbtn("telegram", "Войти через Telegram", "✈️ ") + pbtn("phone", "По номеру телефона", "📱 ") + pbtn("google", "Google", "G ") + pbtn("yandex", "Яндекс ID", "Я ") + '</div>' +
       '</div>' +
       '<div id="acc-in" hidden style="display:flex;flex-direction:column;gap:12px">' +
         '<div class="acc-me"><div class="acc-ava" id="acc-ava"></div><div><b id="acc-mail"></b><span class="note">База хранится онлайн и на этом телефоне</span></div></div>' +
+        '<div class="note" id="acc-ids" hidden style="white-space:pre-line"></div>' +
+        '<button type="button" id="acc-link-tg" hidden>✈️ Привязать Telegram</button>' +
+        '<div class="ok" id="acc-in-msg" hidden></div>' +
 
         '<div class="confirm" id="acc-logout-confirm" hidden><span>Выйти из аккаунта? Данные останутся в облаке, а с этого телефона будут убраны — при следующем входе вернутся.</span><div class="row2"><button type="button" id="acc-logout-no">Отмена</button><button type="button" class="danger" id="acc-logout-yes">Выйти</button></div></div>' +
+      '</div>' +
+      '<div id="acc-wait" hidden style="display:flex;flex-direction:column;gap:12px;text-align:center">' +
+        '<div style="font-size:40px">✈️</div><b id="acc-wait-t">Подтверди вход в Telegram</b>' +
+        '<div class="note" id="acc-wait-n"></div>' +
+        '<a class="primary" id="acc-wait-open" href="#" target="_blank" rel="noopener" style="display:block;text-decoration:none;padding:12px;border-radius:12px;background:var(--accent);color:var(--accent-ink);font-weight:600">Открыть Telegram</a>' +
+        '<div class="err" id="acc-wait-err" hidden></div>' +
+        '<button type="button" id="acc-wait-cancel">Отмена</button>' +
       '</div>' +
       '<div class="actions"><div class="right"><button type="button" id="acc-close">Закрыть</button></div></div></div>';
     document.body.appendChild(sh);
@@ -238,7 +323,13 @@
     sh.addEventListener("click", (e) => { if (e.target === sh && !sh.classList.contains("gate")) sh.hidden = true; });
     $("acc-tab-in").onclick = () => { mode = "in"; err(""); paint(); };
     $("acc-tab-up").onclick = () => { mode = "up"; err(""); paint(); };
-    sh.querySelectorAll("[data-p]").forEach(b => b.onclick = () => { if (!b.disabled) location.href = oauthUrl(b.dataset.p); });
+    sh.querySelectorAll("[data-p]").forEach(b => b.onclick = () => {
+      if (b.disabled) return;
+      if (b.dataset.p === "telegram" || b.dataset.p === "phone") tgStart(b.dataset.p === "phone" ? "phone" : "tg", false);
+      else location.href = oauthUrl(b.dataset.p);
+    });
+    $("acc-link-tg").onclick = () => tgStart("tg", true);
+    $("acc-wait-cancel").onclick = () => tgStop(true);
     $("acc-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       if (!ready) { err("Сервер ещё не настроен."); return; }
@@ -294,7 +385,13 @@
         syncNow(false);
       }
     }
-    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") syncNow(false); });
+    const tp = await K.get("meta", "tgPending");
+    if (ready && tp && tp.code && Date.now() - tp.t < 10 * 60000) {
+      tgPend = { code: tp.code, mode: tp.mode, link: tp.link, t: tp.t };
+      $("acc-wait-open").href = tgLink(tgPend); $("acc-wait-t").textContent = "Жду подтверждения из Telegram"; $("acc-wait-n").textContent = "Если уже нажал «Войти в Колчан» в боте — вход выполнится через пару секунд.";
+      waitUi(true); tgPoll();
+    }
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { syncNow(false); if (tgPend) tgPoll(); } });
     window.addEventListener("online", () => syncNow(false));
   });
 })();

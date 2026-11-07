@@ -24,3 +24,8 @@
    - `REPO` (Text) — `логин/kolchan-data`
 6. Открыть `https://kolchan-bot.<поддомен>.workers.dev/setup?key=<HOOK_SECRET>` → «Готово!».
 7. Написать боту `/start` — он пришлёт твой Telegram ID. Добавить `OWNER_ID` (Text) с этим числом.
+
+## Вход в приложение через Telegram (бета)
+Бот подтверждает вход в Колчан β для любого человека: приложение открывает `t.me/<бот>?start=login_<код>`,
+человек нажимает «Войти в Колчан» (и «Поделиться номером» при входе по телефону), бот сообщает функции `tg-auth` в Supabase.
+Переменные Worker: `LOGIN_URL` (Text) — `https://<проект>.supabase.co/functions/v1/tg-auth`, `LOGIN_SECRET` (Secret) — тот же, что в Supabase.

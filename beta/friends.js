@@ -56,7 +56,7 @@ header .tt { position: absolute; left: 50%; top: 50%; transform: translate(-50%,
 header .tt > * { pointer-events: auto; }
 header .tt h1 { white-space: nowrap; }
 header .tt .tsub { display: flex; gap: 4px; justify-content: center; flex-wrap: nowrap; font-size: 12px; line-height: 1.2; white-space: nowrap; max-width: 100%; }
-header .tt .tsub .qname { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+header .tt .tsub .qname.nofit { display: none; }
 header .tt .tsub .count { font-size: 12px; }
 header .tt .tsub .qname { font-size: 12px; }
 header .tt .tsub .qname:not([hidden])::before { content: "· "; }
@@ -196,7 +196,15 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
     const right = $("data-open").parentElement;
     // the counter and the quiver name go under the centred title
     const tt = document.querySelector("header .tt");
-    if (tt) { const sub = document.createElement("div"); sub.className = "tsub"; const cnt = $("count"), qn = $("q-cur"); if (cnt) sub.appendChild(cnt); if (qn) sub.appendChild(qn); tt.appendChild(sub); }
+    if (tt) {
+      const sub = document.createElement("div"); sub.className = "tsub"; const cnt = $("count"), qn = $("q-cur");
+      if (cnt) sub.appendChild(cnt); if (qn) sub.appendChild(qn); tt.appendChild(sub);
+      // the quiver name is shown only when it fits whole; otherwise just the counter
+      const fit = () => { if (!qn) return; qn.classList.remove("nofit"); if (!qn.hidden && sub.scrollWidth > sub.clientWidth + 1) qn.classList.add("nofit"); };
+      if (qn) new MutationObserver(fit).observe(qn, { attributes: true, attributeFilter: ["hidden"], childList: true, characterData: true, subtree: true });
+      if (cnt) new MutationObserver(fit).observe(cnt, { childList: true, characterData: true, subtree: true });
+      window.addEventListener("resize", fit); fit();
+    }
     const ava = document.createElement("button"); ava.type = "button"; ava.className = "ava"; ava.id = "ava"; ava.setAttribute("aria-label", "Меню"); ava.setAttribute("aria-haspopup", "menu");
     const person = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
     const ICON = {

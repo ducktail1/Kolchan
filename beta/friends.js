@@ -50,6 +50,24 @@ header { flex-wrap: nowrap !important; align-items: center !important; }
 .ava-menu button:active { background: var(--bg); }
 .ava-menu button svg { width: 20px; height: 20px; flex: none; color: var(--muted); }
 .ava-menu button .warn { margin-left: auto; color: #d4553f; }
+.ava-menu button.out { color: #d4553f; border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; margin-top: 4px; }
+.ava-menu button.out svg { color: #d4553f; }
+/* centred title: menu + home on the left, avatar on the right, «Колчан» in the middle with the counter under it */
+header { position: relative; min-height: 48px; }
+header .tt { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); align-items: center; text-align: center; max-width: calc(100% - 190px); pointer-events: none; }
+header .tt > * { pointer-events: auto; }
+header .tt h1 { white-space: nowrap; }
+header .tt .tsub { display: flex; gap: 4px; justify-content: center; flex-wrap: nowrap; font-size: 12px; line-height: 1.2; white-space: nowrap; max-width: 100%; }
+header .tt .tsub .qname.nofit { display: none; }
+header .tt .tsub .count { font-size: 12px; }
+header .tt .tsub .qname { font-size: 12px; }
+header .tt .tsub .qname:not([hidden])::before { content: "· "; }
+/* «Данные»: backup as its own block, like the sync block */
+.dblock { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex !important; flex-direction: column; gap: 8px !important; }
+.dblock .cs-t { font-weight: 600; }
+.dblock .row2 { display: flex; gap: 8px; }
+.dblock .row2 > button { flex: 1; }
+.vh-file { position: absolute !important; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
 /* frosted strip under the bottom buttons: the list blurs as it slides under them */
 .fab-blur { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; pointer-events: none;
   height: calc(env(safe-area-inset-bottom, 0px) + 96px);
@@ -183,7 +201,37 @@ header { flex-wrap: nowrap !important; align-items: center !important; }
     const syncBlur = () => { const a = $("add"); fb2.hidden = !a || a.hidden; };
     if ($("add")) new MutationObserver(syncBlur).observe($("add"), { attributes: true, attributeFilter: ["hidden"] });
     syncBlur();
+    // bottom buttons: plain words, no «+» / «⇄»
+    if ($("add")) $("add").textContent = "Добавить";
+    if ($("mv-open")) $("mv-open").textContent = "Переместить";
+    // «Данные»: «Резервная копия» block — last export, «Выгрузить файл» and «Загрузить файл» buttons
+    const dbtns = $("data-bg") && $("data-bg").querySelector(".dataBtns");
+    if (dbtns && $("d-import")) {
+      const inst = [...dbtns.children].find(x => x.tagName === "BUTTON" && /Домой/.test(x.textContent));
+      const inp = $("d-import"), lbl = inp.closest("label"), ex = $("d-export");
+      inp.classList.add("vh-file"); dbtns.parentElement.appendChild(inp); if (lbl) lbl.remove();
+      dbtns.textContent = ""; dbtns.classList.add("dblock");
+      const t = document.createElement("div"); t.className = "cs-t"; t.textContent = "Резервная копия";
+      const imp = document.createElement("button"); imp.type = "button"; imp.id = "d-import-btn"; imp.textContent = "Загрузить файл";
+      imp.onclick = () => inp.click();
+      ex.classList.remove("primary"); ex.textContent = "Выгрузить файл";
+      const row = document.createElement("div"); row.className = "row2"; row.append(ex, imp);
+      const hint = document.createElement("div"); hint.className = "note"; hint.textContent = "Выгрузка сохраняет файл с базой. Загрузка заменит всю базу на этом телефоне — перед заменой спрошу.";
+      dbtns.append(t, $("d-last"), row, hint);
+      if (inst) { const nt = $("data-bg").querySelector(".notice"); nt.parentElement.insertBefore(inst, nt); }
+    }
     const right = $("data-open").parentElement;
+    // the counter and the quiver name go under the centred title
+    const tt = document.querySelector("header .tt");
+    if (tt) {
+      const sub = document.createElement("div"); sub.className = "tsub"; const cnt = $("count"), qn = $("q-cur");
+      if (cnt) sub.appendChild(cnt); if (qn) sub.appendChild(qn); tt.appendChild(sub);
+      // the quiver name is shown only when it fits whole; otherwise just the counter
+      const fit = () => { if (!qn) return; qn.classList.remove("nofit"); if (!qn.hidden && sub.scrollWidth > sub.clientWidth + 1) qn.classList.add("nofit"); };
+      if (qn) new MutationObserver(fit).observe(qn, { attributes: true, attributeFilter: ["hidden"], childList: true, characterData: true, subtree: true });
+      if (cnt) new MutationObserver(fit).observe(cnt, { childList: true, characterData: true, subtree: true });
+      window.addEventListener("resize", fit); fit();
+    }
     const ava = document.createElement("button"); ava.type = "button"; ava.className = "ava"; ava.id = "ava"; ava.setAttribute("aria-label", "Меню"); ava.setAttribute("aria-haspopup", "menu");
     const person = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
     const ICON = {
@@ -206,7 +254,7 @@ header { flex-wrap: nowrap !important; align-items: center !important; }
       menu = document.createElement("div"); menu.className = "ava-menu"; menu.setAttribute("role", "menu");
       const acc = window.__kolchanAccount && window.__kolchanAccount();
       if ($("acc-open")) { const w = document.createElement("div"); w.className = "who"; w.textContent = acc ? (acc.email || "Аккаунт") : "Ты не вошёл"; menu.appendChild(w); }
-      [["acc-open", acc ? "Аккаунт" : "Войти"], ["fb-open", "Отзыв"], ["data-open", "Данные"]].forEach(([id, label]) => {
+      [["acc-open", acc ? "Аккаунт" : "Войти"], ["data-open", "Данные"], ["fb-open", "Отзыв"]].forEach(([id, label]) => {
         const src = $(id); if (!src) return;
         const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "menuitem");
         b.innerHTML = ICON[id] + "<span></span>" + (warnIn(id) ? '<span class="warn">⚠</span>' : "");
@@ -214,6 +262,12 @@ header { flex-wrap: nowrap !important; align-items: center !important; }
         b.onclick = () => { closeMenu(); src.click(); };
         menu.appendChild(b);
       });
+      if (acc && window.__kolchanLogout) {
+        const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "menuitem"); b.className = "out";
+        b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5M5 12h11"/></svg><span>Выйти</span>';
+        b.onclick = () => { closeMenu(); window.__kolchanLogout(); };
+        menu.appendChild(b);
+      }
       right.appendChild(menu); ava.setAttribute("aria-expanded", "true");
     }
     ava.onclick = (e) => { e.stopPropagation(); if (menu) closeMenu(); else openMenu(); };

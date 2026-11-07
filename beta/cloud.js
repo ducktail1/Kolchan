@@ -145,15 +145,36 @@
 .acc-me { display: flex; align-items: center; gap: 12px; }
 .acc-ava { width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-weight: 700; font-size: 18px; flex: none; }
 .acc-me b { display: block; overflow-wrap: anywhere; }
+/* beta: the app starts with sign-in / sign-up — a full-screen gate until there is a session */
+.sheet-bg.gate { z-index: 100; background: var(--bg); align-items: center !important; justify-content: center; overflow-y: auto; }
+.sheet-bg.gate .sheet { box-shadow: none; border: 0; max-width: 440px; width: 100%; max-height: none; margin: auto; padding-top: calc(env(safe-area-inset-top, 0px) + 24px); animation: none; }
+.gate-head { display: none; text-align: center; margin-bottom: 18px; }
+.sheet-bg.gate .gate-head { display: block; }
+.sheet-bg.gate .sheet > h2, .sheet-bg.gate #acc-out > .note:first-child { display: none; }
+.gate-head .logo { font-family: var(--font-display); font-size: 34px; font-weight: 700; }
+.gate-head p { color: var(--muted); margin: 8px 0 0; }
+.cloud-sync { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.cloud-sync .cs-t { font-weight: 600; }
 .beta-tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--accent-ink); background: var(--accent); border-radius: 6px; padding: 2px 6px; margin-left: 6px; vertical-align: middle; }
 `;
   let mode = "in";
-  function setState(text, bad) { const el = $("acc-state"); if (el) { el.textContent = text || ""; el.className = bad ? "err" : "note"; el.hidden = !text; } const b = $("acc-open"); if (b && session) b.textContent = bad ? "Аккаунт ⚠" : "Аккаунт"; }
+  // sync status lives in «Данные»; a problem marks that menu item (and the avatar) with ⚠
+  function setState(text, bad) { const el = $("acc-state"); if (el) { el.textContent = text || ""; el.className = bad ? "err" : "note"; } const b = $("data-open"); if (b) b.textContent = bad ? "Данные ⚠" : "Данные"; }
   window.__kolchanAccount = () => (session ? { email: session.user.email || "" } : null);
+  // no session in the beta → the sign-in screen covers the app and cannot be closed
+  function gate() {
+    const sh = $("acc-bg"); if (!sh || !ready) return;
+    const on = !session;
+    sh.classList.toggle("gate", on);
+    if (on) sh.hidden = false;
+    $("acc-close").parentElement.parentElement.hidden = on;
+  }
   function paint() {
+    gate();
     if (window.__kolchanPaintAva) window.__kolchanPaintAva();
     const b = $("acc-open"); if (!b) return;
-    b.textContent = session ? (lastErr ? "Аккаунт ⚠" : "Аккаунт") : "Войти";
+    b.textContent = session ? "Аккаунт" : "Войти";
+    const cs = $("cloud-sync"); if (cs) cs.hidden = !session;
     $("acc-out").hidden = !!session; $("acc-in").hidden = !session;
     if (session) { const e = session.user.email || "без почты"; $("acc-mail").textContent = e; $("acc-ava").textContent = (e[0] || "?").toUpperCase(); }
     $("acc-tab-in").classList.toggle("on", mode === "in"); $("acc-tab-up").classList.toggle("on", mode === "up");
@@ -188,7 +209,7 @@
     const sh = document.createElement("div"); sh.className = "sheet-bg"; sh.id = "acc-bg"; sh.hidden = true;
     const prov = (CFG.providers || []);
     const pbtn = (id, label, icon) => '<button type="button" data-p="' + id + '"' + (prov.includes(id) ? "" : " disabled") + '>' + icon + label + (prov.includes(id) ? "" : " <small>скоро</small>") + "</button>";
-    sh.innerHTML = '<div class="sheet"><h2>Аккаунт</h2>' +
+    sh.innerHTML = '<div class="sheet"><div class="gate-head"><div class="logo">Колчан <span class="beta-tag">β</span></div><p>Войди или зарегистрируйся — база будет храниться онлайн и одинаково на всех твоих устройствах.</p></div><h2>Аккаунт</h2>' +
       '<div id="acc-out">' +
         '<div class="note" style="margin-bottom:12px">Войди, чтобы база хранилась онлайн и была одинаковой на всех устройствах. Без входа всё работает как раньше — только на этом телефоне.</div>' +
         '<div class="acc-tabs"><button type="button" id="acc-tab-in">Вход</button><button type="button" id="acc-tab-up">Регистрация</button></div>' +
@@ -205,8 +226,7 @@
       '</div>' +
       '<div id="acc-in" hidden style="display:flex;flex-direction:column;gap:12px">' +
         '<div class="acc-me"><div class="acc-ava" id="acc-ava"></div><div><b id="acc-mail"></b><span class="note">База хранится онлайн и на этом телефоне</span></div></div>' +
-        '<div class="note" id="acc-state" hidden></div>' +
-        '<div class="row2"><button type="button" id="acc-sync">Синхронизировать</button><button type="button" class="danger" id="acc-logout">Выйти</button></div>' +
+
         '<div class="confirm" id="acc-logout-confirm" hidden><span>Выйти из аккаунта? Данные останутся в облаке, а с этого телефона будут убраны — при следующем входе вернутся.</span><div class="row2"><button type="button" id="acc-logout-no">Отмена</button><button type="button" class="danger" id="acc-logout-yes">Выйти</button></div></div>' +
       '</div>' +
       '<div class="actions"><div class="right"><button type="button" id="acc-close">Закрыть</button></div></div></div>';
@@ -215,7 +235,7 @@
     const open = () => { err(""); paint(); sh.hidden = false; };
     ab.onclick = open;
     $("acc-close").onclick = () => { sh.hidden = true; };
-    sh.addEventListener("click", (e) => { if (e.target === sh) sh.hidden = true; });
+    sh.addEventListener("click", (e) => { if (e.target === sh && !sh.classList.contains("gate")) sh.hidden = true; });
     $("acc-tab-in").onclick = () => { mode = "in"; err(""); paint(); };
     $("acc-tab-up").onclick = () => { mode = "up"; err(""); paint(); };
     sh.querySelectorAll("[data-p]").forEach(b => b.onclick = () => { if (!b.disabled) location.href = oauthUrl(b.dataset.p); });
@@ -227,11 +247,12 @@
       if (pass.length < 6) { err("Пароль — минимум 6 символов."); return; }
       if (mode === "up" && pass !== $("acc-pass2").value) { err("Пароли не совпадают."); return; }
       const go = $("acc-go"); go.disabled = true; err("");
+      const fromGate = sh.classList.contains("gate");
       try {
         if (mode === "up") { const r = await signUp(email, pass); if (r === "confirm") { err(""); $("acc-err").className = "ok"; $("acc-err").textContent = "Почти готово: открой письмо на " + email + " и нажми ссылку — вернёшься сюда уже в аккаунте."; $("acc-err").hidden = false; return; } }
         else await signIn(email, pass);
         $("acc-pass").value = ""; $("acc-pass2").value = "";
-        paint(); syncNow(true);
+        paint(); if (fromGate) sh.hidden = true; syncNow(true);
       } catch (ex) {
         $("acc-err").className = "err"; err(ruErr(ex));
         if ((ex.code || "") === "email_not_confirmed" || /not confirmed/i.test(ex.message || "")) $("acc-resend").hidden = false;
@@ -243,8 +264,16 @@
       try { await resend(email); $("acc-err").className = "ok"; $("acc-err").textContent = "Отправил письмо на " + email + ". Открой его и нажми ссылку — вернёшься сюда уже в аккаунте."; $("acc-err").hidden = false; $("acc-resend").hidden = true; }
       catch (ex) { $("acc-err").className = "err"; err(ruErr(ex)); }
     };
+    // «Синхронизация» block in «Данные»: last sync time and a button
+    const dsheet = document.querySelector("#data-bg .sheet");
+    if (dsheet) {
+      const box = document.createElement("div"); box.id = "cloud-sync"; box.className = "cloud-sync"; box.hidden = true;
+      box.innerHTML = '<div class="cs-t">Синхронизация с аккаунтом</div><div class="note" id="acc-state"></div><button type="button" id="acc-sync">Синхронизировать сейчас</button>';
+      const btns = dsheet.querySelector(".dataBtns"); dsheet.insertBefore(box, btns);
+    }
     $("acc-sync").onclick = () => syncNow(true);
-    $("acc-logout").onclick = () => { $("acc-logout-confirm").hidden = false; };
+    // «Выйти» in the avatar menu opens the account window with the confirmation
+    window.__kolchanLogout = () => { err(""); paint(); sh.hidden = false; $("acc-logout-confirm").hidden = false; };
     $("acc-logout-no").onclick = () => { $("acc-logout-confirm").hidden = true; };
     $("acc-logout-yes").onclick = async () => {
       await syncNow(true);

@@ -16,7 +16,7 @@ const LOG_MAX = 80;
 const DATA = ["places", "bags", "items", "quivers"];
 const MAINQ = "main", MAIN_NAME = "Основной";
 const QOF = (r) => (r && r.q) || MAINQ;
-export const BOT_VERSION = "1.2.0";
+export const BOT_VERSION = "1.2.2";
 
 // ---------- helpers ----------
 const low = (s) => (s || "").toLowerCase().replace(/ё/g, "е");
@@ -237,6 +237,7 @@ function logLine(e) {
   if (e.kind === "check-ok") what = "✔ на месте";
   else if (e.kind === "check-miss") what = "⚠ не нашлась";
   else if (e.kind === "note") what = "📝";
+  else if (e.kind === "rename") return fmtDate(e.t || 0) + " — ✎ " + esc(e.what === "place" ? "место «" + e.from + "» → «" + e.to + "»" : e.what === "bag" ? "сумка «" + e.from + "» → «" + e.to + "»" : "«" + e.from + "» → «" + e.to + "»");
   else what = "→ " + (e.to || "");
   return when + " — " + esc(what) + (e.note ? " · " + esc(e.note) : "");
 }
@@ -275,7 +276,8 @@ function bagView(d, b, page = 0, head) {
   if (b.location === TRANSIT) rows.push([btn("✅ Принять" + (b.dest ? " в " + b.dest : ""), "rc:" + b.id)]);
   rows.push([btn("🚚 Отправить", "snd:" + b.id), btn("⇄ Переложить", "mv:b:" + b.id)]);
   const p = topPlace(scope(d, QOF(b)), b.location);
-  rows.push([btn("➕ Положить в сумку", "ad:b:" + b.id), p ? btn("⬅ " + p.name, "p:" + p.id) : btn("⬅ Сумки", "B")]);
+  rows.push([btn("➕ Положить в сумку", "ad:b:" + b.id), btn("✎ Переименовать", "rnb:" + b.id)]);
+  rows.push([p ? btn("⬅ " + p.name, "p:" + p.id) : btn("⬅ Сумки", "B")]);
   return { text: s, kb: kbd(rows) };
 }
 // several quivers: a section per quiver, with a header row
@@ -357,7 +359,7 @@ function searchView(d, q) {
 function doRename(d, p, name) {
   const ds = scope(d, QOF(p)), old = low(p.name), t = Date.now();
   const swap = (path) => { const a = norm(path); if (low(a[0]) !== old) return null; a[0] = name; return pathStr(a); };
-  ds.items.forEach((i) => { if (i.in) return; const np = swap(i.place); if (np === null) return; i.parts = norm(np); i.place = np; i.updatedAt = t; i._t = t; });
+  ds.items.forEach((i) => { if (i.in) return; const op = i.place, np = swap(i.place); if (np === null) return; i.parts = norm(np); i.place = np; i.updatedAt = t; i._t = t; i.log = addLog(i.log, { t, kind: "rename", what: "place", from: op, to: np }); });
   ds.bags.forEach((b) => { const nl = swap(b.location), nd = b.dest ? swap(b.dest) : null; if (nl === null && nd === null) return; if (nl !== null) b.location = nl; if (nd !== null) b.dest = nd; b._t = t; });
   const other = ds.places.find((x) => x !== p && low(x.name) === low(name));
   const r = rootOf(d);
@@ -449,6 +451,16 @@ export function onText(d, text, reply) {
     const res = doRename(d, p, name);
     return Object.assign(placeView(d, res, 0, merged ? "🔀 Объединил «" + esc(oldName) + "» с «" + esc(res.name) + "»" : "✎ Переименовал «" + esc(oldName) + "» → «" + esc(name) + "»"), { change: "Бот: место " + oldName + " → " + name });
   }
+  if (s && s.k === "rnb") {
+    const b = bagById(d, s.id); if (!b) return { text: "Не нашёл эту сумку." };
+    const name = clean(t.replace(/\//g, " ")); if (!name) return { text: "Не вижу названия." };
+    if (name === b.name) return bagView(d, b);
+    if (scope(d, QOF(b)).bags.some((x) => x !== b && low(x.name) === low(name))) return { text: "Сумка «" + esc(name) + "» уже есть — выбери другое название." };
+    const old = b.name, tt = Date.now();
+    b.name = name; b._t = tt;
+    d.items.filter((i) => i.in === b.id).forEach((i, k) => { i.updatedAt = tt + k; i._t = tt + k; i.log = addLog(i.log, { t: tt + k, kind: "rename", what: "bag", from: old, to: name }); });
+    return Object.assign(bagView(d, b, 0, "✎ Переименовал «" + esc(old) + "» → «" + esc(name) + "»"), { change: "Бот: сумка " + old + " → " + name });
+  }
   if (s && s.k === "mv") {
     const f = findThings(d, t);
     const all = f.items.map((o) => ["i", o]).concat(f.bags.map((o) => ["b", o]));
@@ -513,6 +525,7 @@ export function onButton(d, data, msg) {
     case "mnew": { const tg0 = targetOf(d, s.t, s.id); if (!s.p || !tg0) return null; const ds = scope(d, QOF(tg0)); ensurePlace(ds, s.p); return doMove(d, s.t, s.id, { place: s.p, q: ds.q }, s.note); }
     case "nw": { const t = targetOf(d, p[1], p[2]); if (!t) return null; return { ask: true, text: st({ k: "np", t: p[1], id: p[2] }) + "Как назвать новое место для <b>" + esc(t.name) + "</b>?", force: "Например: Гараж" }; }
     case "rn": { const pl = rootOf(d).places.find((x) => x.id === p[1]); if (!pl) return null; return { ask: true, text: st({ k: "rn", id: pl.id }) + "Новое название для «" + esc(pl.name) + "»? Если такое место уже есть, они объединятся.", force: pl.name }; }
+    case "rnb": { const bg = bagById(d, p[1]); if (!bg) return null; return { ask: true, text: st({ k: "rnb", id: bg.id }) + "Новое название для сумки «" + esc(bg.name) + "»?", force: bg.name }; }
     case "npl": return { ask: true, text: st({ k: "np", q: p[1] || MAINQ }) + "Как назвать новое место" + (multiQ(d) ? " в «" + esc(qName(d, p[1] || MAINQ)) + "»" : "") + "?", force: "Например: Гараж" };
     case "ad": { const t = p[1] === "p" ? d.places.find((x) => x.id === p[2]) : bagById(d, p[2]); if (!t) return null; return { ask: true, text: st({ k: "add", d: p[1] + ":" + p[2] }) + "Что положить в «" + esc(t.name) + "»? Несколько — через запятую.", force: "Например: Маска Smith" }; }
     case "aq": return s.q ? addPicker(d, [s.q]) : null;

@@ -229,7 +229,7 @@
   }
   async function pull(cfg) {
     const j = await gh(cfg, "GET");
-    if (!j) return { data: { places: [], bags: [], items: [] }, sha: null };
+    if (!j) return { data: { places: [], bags: [], items: [], quivers: [] }, sha: null };
     let text = j.content ? b64dec(j.content) : "";
     if (!text && j.download_url) text = await (await fetch(j.download_url, { headers: { Authorization: "Bearer " + cfg.token } })).text();
     return { data: JSON.parse(text), sha: j.sha };
@@ -248,7 +248,7 @@
       setState("Синхронизирую…");
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const local = { places: await K.all("places"), bags: await K.all("bags"), items: await K.all("items") };
+          const local = Object.fromEntries(await Promise.all(DATA.map(async c => [c, await K.all(c)])));
           const remote = await pull(cfg);
           const base = (await K.get("meta", "syncBase")) || null;
           const merged = merge(local, remote.data, base && base.ids);
@@ -270,6 +270,7 @@
     try { await running; } finally { running = null; }
   }
   window.__syncSoon = () => { clearTimeout(timer); timer = setTimeout(() => syncNow(false), 8000); };
+  window.__kolchanSync = { merge, sameData, DATA };
 
   document.addEventListener("DOMContentLoaded", async () => {
     const cfg = await cfgGet();

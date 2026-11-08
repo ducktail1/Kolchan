@@ -71,7 +71,8 @@
   async function resend(email) {
     await api("/auth/v1/resend?redirect_to=" + encodeURIComponent(location.origin + location.pathname), { method: "POST", headers: authHeaders(), body: JSON.stringify({ type: "signup", email }) });
   }
-  const oauthUrl = (provider) => CFG.url + "/auth/v1/authorize?provider=" + provider + "&redirect_to=" + encodeURIComponent(location.origin + location.pathname);
+  // Google always shows the account chooser (otherwise it silently reuses the last account)
+  const oauthUrl = (provider) => CFG.url + "/auth/v1/authorize?provider=" + provider + "&redirect_to=" + encodeURIComponent(location.origin + location.pathname) + (provider === "google" ? "&prompt=select_account" : "");
 
   // ---------- data: one table "records" (user_id, coll, id, data, deleted, updated_at) ----------
   async function rest(path, opt) {

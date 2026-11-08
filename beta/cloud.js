@@ -444,7 +444,7 @@
           '<button type="submit" class="primary" id="acc-go">Войти</button>' +
         '</form>' +
         '<div class="acc-or" style="margin:14px 0">или</div>' +
-        '<div class="acc-prov">' + pbtn("telegram", "Войти через Telegram", "✈️ ") + pbtn("google", "Google", "G ") + pbtn("yandex", "Яндекс ID", "Я ") + '</div>' +
+        '<div class="acc-prov">' + pbtn("telegram", "Войти через Telegram", "✈️ ") + pbtn("google", "Google", "G ") + '</div>' +
         (BETA ? "" : '<div id="acc-local"><button type="button" id="acc-local-go">Использовать локально</button>' +
           '<div class="note">Без аккаунта база хранится только на этом телефоне: синхронизации между устройствами нет, а если удалить приложение — вещи пропадут. Войти можно позже — в меню справа вверху.</div></div>') +
       '</div>' +

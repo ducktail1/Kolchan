@@ -16,7 +16,14 @@
   }
 
   const css = `
-.welcome { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px 16px; display: flex; flex-direction: column; gap: 12px; }
+.welcome { gap: 12px; position: relative; }
+.welcome h2 { padding-right: 40px; }
+/* ✕ in the top right corner of a pop-up window */
+.sh-x { position: absolute; top: 12px; right: 12px; width: 34px; height: 34px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--surface); border: 1px solid var(--line); color: var(--muted); z-index: 2; }
+.sh-x svg { width: 14px; height: 14px; }
+.sheet.has-x { position: relative; }
+.sheet.has-x > h2 { padding-right: 44px; }
+.gate .sh-x { display: none; }
 .welcome h2 { font-family: var(--font-display); font-size: 19px; margin: 0; }
 .welcome ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--ink); font-size: 15px; }
 .welcome ol b { font-weight: 600; }
@@ -97,18 +104,32 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
     const anchor = $("crumbs");
 
     // welcome card
-    const wel = document.createElement("div"); wel.className = "welcome"; wel.id = "welcome"; wel.hidden = true;
+    // ✕ button for pop-up windows (replaces «Закрыть» at the bottom)
+    const X_SVG = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+    window.__kolchanX = (sheet, close) => {
+      if (!sheet || sheet.querySelector(":scope > .sh-x")) return;
+      const x = document.createElement("button"); x.type = "button"; x.className = "sh-x"; x.setAttribute("aria-label", "Закрыть"); x.innerHTML = X_SVG;
+      x.onclick = close; sheet.classList.add("has-x"); sheet.insertBefore(x, sheet.firstChild);
+    };
+    // welcome: a window over the app on the first start and whenever the base is still empty; ✕ closes it
+    const welBg = document.createElement("div"); welBg.className = "sheet-bg"; welBg.id = "wel-bg"; welBg.hidden = true;
+    const wel = document.createElement("div"); wel.className = "sheet welcome"; wel.id = "welcome";
+    welBg.appendChild(wel);
     wel.innerHTML = '<h2>Привет! Это Колчан</h2>' +
-      '<div class="note">Записывай, где лежат вещи, складывай их в сумки и не теряй в поездках. Всё хранится только на твоём телефоне.</div>' +
+      '<div class="note">Записывай, где лежат вещи, складывай их в сумки и не теряй в поездках.</div>' +
       '<ol><li><b>Места</b> — где хранишь: дом, дача, у друга.</li><li><b>Сумки</b> — рюкзак, чехол: переезжают вместе с содержимым.</li><li><b>Вещи</b> — кладёшь в место или в сумку, история пишется сама.</li></ol>' +
       '<div class="row2"><button type="button" class="primary" id="wel-start">Начать: добавить место</button></div>';
-    wrap.insertBefore(wel, anchor);
+    document.body.appendChild(welBg);
+    let welSeen = false;   // shown once per app start
+    const welClose = () => { welBg.hidden = true; };
+    window.__kolchanX(wel, welClose);
+    welBg.addEventListener("click", (e) => { if (e.target === welBg) welClose(); });
     const rem = document.createElement("div"); rem.className = "remind"; rem.hidden = true;
     rem.innerHTML = '<span>База хранится только на этом телефоне. Сделай резервную копию — займёт 10 секунд.</span><div class="rbtn"><button type="button" class="ghost" id="rem-later">Позже</button><button type="button" id="rem-do">Сохранить копию</button></div>';
     wrap.insertBefore(rem, anchor);
     const membar = document.createElement("div"); membar.className = "remind"; membar.hidden = true;
     membar.innerHTML = '<span>Здесь браузер не даёт сохранять данные: после закрытия всё пропадёт. В приложении на экране «Домой» всё сохраняется.</span>';
-    wrap.insertBefore(membar, wel);
+    wrap.insertBefore(membar, anchor);
 
     // feedback button + sheet
     const dataBtn = $("data-open");
@@ -132,6 +153,7 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
     $("fb-text").addEventListener("input", upd); upd();
     fbBtn.onclick = () => { $("fb-msg").hidden = true; fb.hidden = false; };
     $("fb-close").onclick = () => { fb.hidden = true; };
+    if (AVA) { window.__kolchanX(fb.querySelector(".sheet"), () => { fb.hidden = true; }); $("fb-close").closest(".actions").hidden = true; }
     fb.addEventListener("click", (e) => { if (e.target === fb) fb.hidden = true; });
     $("fb-copy").onclick = async () => {
       const m = $("fb-msg");
@@ -187,7 +209,7 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
     if (!standalone) {
       // link in the welcome card and in «Данные»
       const how = document.createElement("button"); how.type = "button"; how.className = "link"; how.textContent = "Как поставить на экран «Домой»";
-      how.onclick = window.__showInstall; wel.appendChild(how);
+      how.onclick = () => { welClose(); window.__showInstall(); }; wel.appendChild(how);
       const dSheet = $("data-bg") && $("data-bg").querySelector(".dataBtns");
       if (dSheet) { const b2 = document.createElement("button"); b2.type = "button"; b2.textContent = "Как поставить на экран «Домой»"; b2.onclick = () => { $("data-bg").hidden = true; window.__showInstall(); }; dSheet.appendChild(b2); }
       if (!window.__KOLCHAN_SEED && (window.__KOLCHAN_PREVIEW || !lsGet("kolchan.installSeen"))) setTimeout(window.__showInstall, 400);
@@ -220,6 +242,7 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
       dbtns.append(t, $("d-last"), row, hint);
       if (inst) { const nt = $("data-bg").querySelector(".notice"); nt.parentElement.insertBefore(inst, nt); }
     }
+    if ($("data-bg") && $("d-close")) { window.__kolchanX($("data-bg").querySelector(".sheet"), () => { $("data-bg").hidden = true; }); $("d-close").closest(".actions").hidden = true; }
     const right = $("data-open").parentElement;
     // the counter and the quiver name go under the centred title
     const tt = document.querySelector("header .tt");
@@ -287,7 +310,8 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
     const state = { places: [], bags: [], items: [] };
     async function refresh() {
       const total = state.places.length + state.bags.length + state.items.length;
-      wel.hidden = total > 0;
+      if (total > 0) welBg.hidden = true;
+      else if (!welSeen) { welSeen = true; welBg.hidden = false; }
       let show = false;
       try {
         const sync = await K.get("meta", "sync");
@@ -304,7 +328,7 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
     window.__kolchanRemind = refresh;
     ["places", "bags", "items"].forEach(c => db.collection(c).onSnapshot((s) => { state[c] = s.docs.map(d => Object.assign({ id: d.id }, d.data())); refresh(); }));
 
-    $("wel-start").onclick = () => { const a = $("add"); a.click(); setTimeout(() => { const p = $("add-place"); if (p) p.click(); }, 50); };
+    $("wel-start").onclick = () => { welClose(); const a = $("add"); a.click(); setTimeout(() => { const p = $("add-place"); if (p) p.click(); }, 50); };
     $("rem-later").onclick = async () => { await K.put("meta", { key: "remindSnooze", until: Date.now() + 3 * DAY }); refresh(); };
     $("rem-do").onclick = () => { $("data-open").click(); setTimeout(() => $("d-export").click(), 100); };
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });

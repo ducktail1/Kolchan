@@ -63,7 +63,8 @@ header { flex-wrap: nowrap !important; align-items: center !important; }
 header { position: relative; min-height: 48px; }
 header .tt { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); align-items: center; text-align: center; max-width: calc(100% - 190px); pointer-events: none; }
 header .tt > * { pointer-events: auto; }
-header .tt h1 { white-space: nowrap; }
+header .tt h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+header .tt h1.small { font-size: 18px; }
 header .tt .tsub { display: flex; gap: 4px; justify-content: center; flex-wrap: nowrap; font-size: 12px; line-height: 1.2; white-space: nowrap; max-width: 100%; }
 header .tt .tsub .qname.nofit { display: none; }
 header .tt .tsub .count { font-size: 12px; }

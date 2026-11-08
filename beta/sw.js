@@ -1,5 +1,5 @@
 // Offline cache for the app shell. Bump VERSION when files change.
-const VERSION = "beta-1.5.1-beta.17";
+const VERSION = "beta-1.6.0-beta.18";
 const FILES = ["./", "index.html", "local.js", "friends.js", "cloud.js", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (e) => {

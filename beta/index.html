@@ -294,6 +294,22 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 .ex-cu-row input { width: 100%; box-sizing: border-box; text-align: right; font-variant-numeric: tabular-nums; }
 #ex-share.bad { color: var(--danger); }
 #ex-share.good { color: var(--accent); }
+/* small square «$» button: a quick expense into the current trip */
+/* small «$» in the bottom right corner of the quivers menu */
+.sheet.drawer { position: relative; }
+.ex-quick { position: absolute; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); width: 40px; height: 40px; padding: 0; display: grid; place-items: center; border-radius: 10px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+/* iPhone-style wheel: scroll with snapping, the middle row is the chosen one */
+.wheel-box { position: relative; display: flex; gap: 4px; height: 200px; overflow: hidden; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.wheel-box::before { content: ""; position: absolute; left: 6px; right: 6px; top: 80px; height: 40px; border-radius: 10px; background: var(--bg); pointer-events: none; }
+.wheel-box::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(var(--surface), transparent 38%, transparent 62%, var(--surface)); }
+.wheel { position: relative; flex: 1 1 0; min-width: 0; height: 200px; overflow-y: scroll; scroll-snap-type: y mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.wheel::-webkit-scrollbar { display: none; }
+.wheel > div { height: 40px; line-height: 40px; text-align: center; scroll-snap-align: center; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; color: var(--muted); }
+.wheel > div.on { color: var(--ink); font-weight: 600; }
+.wheel > .pad { scroll-snap-align: none; }
+.wheel.wide > div { font-size: 17px; }
+.dates-h { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.wheel-box.sm { height: 120px; } .wheel-box.sm .wheel { height: 120px; } .wheel-box.sm::before { top: 40px; }
 .assign-btn { margin: 0 12px 12px; width: calc(100% - 24px); box-sizing: border-box; }
 .ta-del { width: 34px; height: 34px; padding: 0; border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
 .ta-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); }
@@ -503,7 +519,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="qv-h">Поездки</div>
     <div class="qlist" id="qv-trips"></div>
     <button type="button" id="tp-add">+ Поездка</button>
-    <div class="note">Каждый колчан — свой список мест, сумок и вещей. Поездка — общий колчан: зови друзей по ссылке, каждый копирует туда свои сумки.</div>
+    <button class="ex-quick" id="ex-quick" type="button" hidden aria-label="Быстро добавить трату" title="Трата"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></button>
   </div>
 </div>
 
@@ -513,11 +529,11 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <label>Название
       <input id="tp-name" placeholder="Например, Шерегеш 2027" autocomplete="off" enterkeyhint="next">
     </label>
-    <div class="row2">
-      <label>С<input id="tp-from" type="date"></label>
-      <label>По<input id="tp-to" type="date"></label>
-    </div>
-    <div class="note">Поездка — общий колчан: потом позовёшь друзей по ссылке, и каждый скопирует туда свои сумки.</div>
+    <input id="tp-from" type="hidden"><input id="tp-to" type="hidden">
+    <div class="dates-h"><span>С</span><button type="button" class="link" id="tp-nodates">без дат</button></div>
+    <div class="wheel-box sm" id="tp-wf"></div>
+    <div class="dates-h" id="tp-to-h"><span>По</span></div>
+    <div class="wheel-box sm" id="tp-wt"></div>
     <div class="err" id="tp-err" hidden></div>
     <div class="actions"><div class="right"><button type="button" id="tp-cancel">Отмена</button><button type="submit" class="primary">Создать</button></div></div>
   </form>
@@ -525,7 +541,6 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 <div class="sheet-bg" id="tc-bg" hidden>
   <div class="sheet" id="tc">
     <h2 id="tc-title">Взять сумку в поездку</h2>
-    <div class="note" id="tc-sub">Сумка и вещи в ней скопируются в поездку. Оригинал останется на месте, у него появится пометка.</div>
     <label>Из колчана<select id="tc-from"></select></label>
     <div class="tc-list" id="tc-list"></div>
     <div class="err" id="tc-err" hidden></div>
@@ -538,13 +553,12 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <input id="ti-link" class="ti-link" readonly aria-label="Ссылка-приглашение">
     <div class="row2"><a class="primary" id="ti-tg" href="#" target="_blank" rel="noopener">Отправить в Telegram</a><button type="button" id="ti-copy">Скопировать</button></div>
     <div class="ok" id="ti-msg" hidden></div>
-    <div class="note">Пока поездка есть только у тебя: общий доступ включим вместе с сервером для поездок, тогда ссылка и заработает. Друг откроет её, войдёт в аккаунт — и поездка появится у него в меню.</div>
+    <div id="ti-note" hidden></div>
   </div>
 </div>
 <div class="sheet-bg" id="tx-bg" hidden>
   <div class="sheet mv-sheet" id="tx">
     <h2 id="tx-title">Добавить вещи</h2>
-    <div class="note">Вещи скопируются в эту сумку, оригиналы останутся на месте. Можно найти поиском или добавить новую.</div>
     <label>Из колчана<select id="tx-from"></select></label>
     <input id="tx-q" type="search" placeholder="Найти вещь" autocomplete="off">
     <div class="mv-list" id="tx-list"></div>
@@ -582,10 +596,16 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     </form>
   </div>
 </div>
+<div class="sheet-bg" id="tw-bg" hidden>
+  <div class="sheet" id="tw">
+    <h2>В какую поездку?</h2>
+    <div class="wheel-box" id="tw-wheel"></div>
+    <button type="button" class="primary" id="tw-go">Дальше</button>
+  </div>
+</div>
 <div class="sheet-bg" id="ta-bg" hidden>
   <div class="sheet" id="ta">
     <h2>Назначить из общего</h2>
-    <div class="note">Выбери, кто что берёт. Купленное останется купленным, если не менять человека. ✕ убирает строку из списка.</div>
     <div class="list" id="ta-list"></div>
   </div>
 </div>
@@ -688,7 +708,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <h2>Данные</h2>
     <div class="note" id="d-stat"></div>
     <div class="note" id="d-last"></div>
-    <div class="note">Версия Колчана: <b>1.6.0-beta.18</b></div>
+    <div class="note">Версия Колчана: <b>1.7.0-beta.19</b></div>
     <div class="dataBtns">
       <button type="button" class="primary" id="d-export">Выгрузить файл</button>
       <label>Загрузить файл <span class="hint">заменит всю базу на этом телефоне</span>
@@ -716,7 +736,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="actions"><div class="right"><button type="button" id="d-close">Закрыть</button></div></div>
   </div>
 </div>
-<script>window.__KOLCHAN_VERSION = "1.6.0-beta.18";</script>
+<script>window.__KOLCHAN_VERSION = "1.7.0-beta.19";</script>
 <script>window.__KOLCHAN_AVA = true;</script>
 <script src="local.js"></script>
 <script src="friends.js"></script>
@@ -899,6 +919,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     el.hidden = tr ? !tripDates(tr) : ql.length < 2 && qName(curQ) === MAIN_NAME;
     if (!$("qv-bg").hidden) renderQv();
   }
+  window.__kolchanSwitchQ = (id) => { if (qList().some(x => x.id === id)) switchQ(id); };
+  window.__kolchanStatus = (t) => setStatus(t);
   function switchQ(id) {
     curQ = id; lsSet("kolchanb.q", id);
     $("q").value = ""; cur = []; showMissing = false; over = {}; levelMem = {}; navStack = [];
@@ -918,13 +940,22 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
         const inp = document.createElement("input"); inp.value = x.name; inp.autocomplete = "off"; inp.setAttribute("aria-label", "Название колчана");
         const row = document.createElement("div"); row.className = "row2";
         const empty = x.id !== MAINQ && ![rawPlaces, rawBags, rawItems].some(a => a.some(r => QOF(r) === x.id && !(a === rawPlaces && (r.name === "С собой" || r.name === "В пути"))));
-        const del = document.createElement("button"); del.type = "button"; del.className = "danger"; del.textContent = "Удалить"; del.hidden = !empty;
+        const isTripQ = x.kind === "trip";
+        const del = document.createElement("button"); del.type = "button"; del.className = "danger"; del.textContent = isTripQ ? "Удалить поездку" : "Удалить"; del.hidden = !empty && !isTripQ;
         const cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = "Отмена";
         const save = document.createElement("button"); save.type = "submit"; save.className = "primary"; save.textContent = "Сохранить";
         row.append(del, cancel, save); f.append(inp, row);
         if (x.id !== MAINQ && !empty) { const nt = document.createElement("div"); nt.className = "note"; nt.textContent = "Удалить можно только пустой колчан."; f.appendChild(nt); }
         cancel.onclick = () => { qvEdit = null; renderQv(); };
+        let confirmDel = false;
         del.onclick = async () => {
+          if (isTripQ) {
+            if (!confirmDel) { confirmDel = true; del.textContent = "Точно удалить?"; return; }
+            if (window.__kolchanTripDrop) await window.__kolchanTripDrop(x.id);
+            // the trip's things go away from this phone (copies; the originals stay in their quivers)
+            for (const r of rawItems.filter(r => QOF(r) === x.id)) await db.collection("items").doc(r.id).delete();
+            for (const r of rawBags.filter(r => QOF(r) === x.id)) await db.collection("bags").doc(r.id).delete();
+          }
           for (const r of rawPlaces.filter(r => QOF(r) === x.id)) await db.collection("places").doc(r.id).delete();
           await db.collection("quivers").doc(x.id).delete();
           qvEdit = null; if (curQ === x.id) switchQ(MAINQ); else renderQv();
@@ -1026,7 +1057,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const common = items.filter(it => it.common && !it.in);
     const owners = [];
     const addOwner = (n) => { if (n && !owners.includes(n)) owners.push(n); };
-    addOwner(me); tripBags.forEach(b => addOwner(b.owner || me)); common.forEach(it => addOwner(it.takenBy));
+    addOwner(me);
+    if (window.__kolchanTripMembers) window.__kolchanTripMembers(tr.id).forEach(addOwner); tripBags.forEach(b => addOwner(b.owner || me)); common.forEach(it => addOwner(it.takenBy));
     const av = $("trip-avs"); av.textContent = ""; owners.slice(0, 5).forEach((n, i) => av.appendChild(avatar(n, i)));
     const total = inBags.length + common.length, done = inBags.filter(it => it.taken).length + common.filter(it => it.takenBy && it.bought).length;
     $("trip-prog").textContent = total ? "Собрано " + done + " из " + total : "Пока ничего не собрано";
@@ -1035,7 +1067,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const wl = $("who-list"); wl.textContent = "";
     $("sec-who-n").textContent = tripBags.length ? tripBags.length + " " + plural(tripBags.length, ["сумка", "сумки", "сумок"]) : "";
     const whoOpen = !("who" in over) || over.who; $("sec-who").setAttribute("aria-expanded", String(whoOpen)); wl.hidden = !whoOpen;
-    if (!tripBags.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "Пока пусто. Нажми «Взять сумку» внизу — и скопируй сюда свои сумки."; wl.appendChild(e); }
+    if (!tripBags.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "Пока пусто."; wl.appendChild(e); }
     owners.forEach((who, oi) => {
       const mine = tripBags.filter(b => (b.owner || me) === who); if (!mine.length) return;
       const h = document.createElement("div"); h.className = "who-h"; h.append(avatar(who, oi), who === me ? (me === "Я" ? "Ты" : who + " (ты)") : who); wl.appendChild(h);
@@ -1168,10 +1200,12 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   // ---------- «Траты»: a small Tricount inside the trip ----------
   const rub = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
   const money = (v) => rub.format(Math.round(v * 100) / 100).replace("-", "−") + " ₽";
+  let exTripId = null;
+  const exT = () => quivers.find(x => x.id === exTripId && x.kind === "trip") || null;
   let exTab = "list", exEdit = null, exFor = new Set(), exMode = "eq", exCu = {};
   const num = (v) => { const x = parseFloat(String(v || "").replace(/\s/g, "").replace(",", ".")); return isFinite(x) ? x : 0; };
   function exPeople(tr) {
-    const ps = tripPeople();
+    const ps = tripPeople(tr);
     (tr.exp || []).forEach(e => { [e.by].concat(e.for || []).forEach(n => { if (n && !ps.includes(n)) ps.push(n); }); });
     return ps;
   }
@@ -1203,7 +1237,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     await db.collection("quivers").doc(tr.id).set({ name: tr.name, order: tr.order || 0, kind: "trip", from: tr.from || "", to: tr.to || "", exp });
   }
   function renderEx() {
-    const tr = curTrip(); if (!tr) { $("ex-bg").hidden = true; return; }
+    const tr = exT(); if (!tr) { $("ex-bg").hidden = true; return; }
     const me = meName(), exp = (tr.exp || []).slice().sort((a, b) => b.t - a.t), ppl = exPeople(tr), bal = exBalances(tr);
     const total = exp.reduce((m, e) => m + e.amt, 0);
     $("ex-title").textContent = "Траты · " + tr.name;
@@ -1214,7 +1248,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     $("ex-tab-list").classList.toggle("on", exTab === "list"); $("ex-tab-bal").classList.toggle("on", exTab === "bal");
     const L = $("ex-list"), B = $("ex-bal"); L.hidden = exTab !== "list"; B.hidden = exTab !== "bal";
     L.textContent = "";
-    if (!exp.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "Пока трат нет. Продукты, скипассы, бензин — всё сюда, потом посчитаем, кто кому должен."; L.appendChild(e); }
+    if (!exp.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "Пока трат нет."; L.appendChild(e); }
     exp.forEach(e => {
       const row = document.createElement("button"); row.type = "button"; row.className = "ex-row";
       const body = document.createElement("div"); const nm = document.createElement("div"); nm.className = "name"; nm.textContent = e.name;
@@ -1249,13 +1283,13 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const v = num($("ex-amt").value), el = $("ex-share"); el.className = "note"; $("ex-err").hidden = true;
     if (exMode === "eq") { const n = exFor.size; el.textContent = v > 0 && n ? "По " + money(v / n) + " с каждого из " + n : ""; return; }
     const sum = Object.values(exCu).reduce((m, x) => m + num(x), 0), left = Math.round((v - sum) * 100) / 100;
-    if (!sum && !v) { el.textContent = "Впиши, кто сколько потратил — сумма посчитается сама."; return; }
+    if (!sum && !v) { el.textContent = ""; return; }
     if (!v) { el.textContent = "Всего: " + money(sum); el.classList.add("good"); return; }
     if (Math.abs(left) < 0.01) { el.textContent = "Сходится: " + money(sum); el.classList.add("good"); }
     else { el.textContent = left > 0 ? "Осталось распределить " + money(left) : "Больше суммы на " + money(-left); el.classList.add("bad"); }
   }
   function renderExCu() {
-    const tr = curTrip(), me = meName(), box = $("ex-cu-list"); box.textContent = "";
+    const tr = exT(), me = meName(), box = $("ex-cu-list"); box.textContent = "";
     exPeople(tr).forEach(n => {
       const row = document.createElement("label"); row.className = "ex-cu-row";
       const nm = document.createElement("span"); nm.textContent = n === me ? (me === "Я" ? "я" : n + " (я)") : n;
@@ -1269,7 +1303,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   let exBy = "";
   function renderExWho() {
     const me = meName(), box = $("ex-who"); box.textContent = "";
-    exPeople(curTrip()).forEach(n => {
+    exPeople(exT()).forEach(n => {
       const b = document.createElement("button"); b.type = "button"; b.className = exBy === n ? "on" : ""; b.textContent = n === me ? (me === "Я" ? "я" : n + " (я)") : n;
       b.setAttribute("role", "radio"); b.setAttribute("aria-checked", String(exBy === n));
       b.onclick = () => { exBy = n; renderExWho(); };
@@ -1284,7 +1318,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   $("ex-m-eq").onclick = () => setExMode("eq");
   $("ex-m-cu").onclick = () => setExMode("cu");
   function renderExFor() {
-    const tr = curTrip(), me = meName(), box = $("ex-for"); box.textContent = "";
+    const tr = exT(), me = meName(), box = $("ex-for"); box.textContent = "";
     exPeople(tr).forEach(n => {
       const b = document.createElement("button"); b.type = "button"; b.className = exFor.has(n) ? "on" : ""; b.textContent = n === me ? (me === "Я" ? "я" : n + " (я)") : n;
       b.setAttribute("aria-pressed", String(exFor.has(n)));
@@ -1294,7 +1328,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     exShare();
   }
   function openExForm(e) {
-    const tr = curTrip(), me = meName(), ppl = exPeople(tr);
+    const tr = exT(), me = meName(), ppl = exPeople(tr);
     exEdit = e || null;
     $("ex-main").hidden = true; $("ex-form").hidden = false; $("ex-err").hidden = true; $("ex-del").hidden = !e;
     $("ex-name").value = e ? e.name : ""; $("ex-amt").value = e ? String(e.amt).replace(".", ",") : "";
@@ -1305,18 +1339,19 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     $("ex-title").textContent = e ? "Трата" : "Новая трата";
     if (!e) $("ex-name").focus();
   }
-  function closeExForm() { exEdit = null; $("ex-form").hidden = true; $("ex-main").hidden = false; renderEx(); }
-  $("ex-open").onclick = () => { exTab = "list"; $("ex-form").hidden = true; $("ex-main").hidden = false; renderEx(); $("ex-bg").hidden = false; };
+  let exQuick = false;
+  function closeExForm() { exEdit = null; if (exQuick) { exQuick = false; $("ex-bg").hidden = true; return; } $("ex-form").hidden = true; $("ex-main").hidden = false; renderEx(); }
+  $("ex-open").onclick = () => { exTripId = curQ; exTab = "list"; $("ex-form").hidden = true; $("ex-main").hidden = false; renderEx(); $("ex-bg").hidden = false; };
   $("ex-add").onclick = () => openExForm(null);
   $("ex-back").onclick = closeExForm;
   $("ex-tab-list").onclick = () => { exTab = "list"; renderEx(); };
   $("ex-tab-bal").onclick = () => { exTab = "bal"; renderEx(); };
-  $("ex-all").onclick = () => { const ppl = exPeople(curTrip()); exFor = exFor.size === ppl.length ? new Set() : new Set(ppl); renderExFor(); };
+  $("ex-all").onclick = () => { const ppl = exPeople(exT()); exFor = exFor.size === ppl.length ? new Set() : new Set(ppl); renderExFor(); };
   $("ex-amt").addEventListener("input", exShare);
   $("ex-bg").addEventListener("click", (e) => { if (e.target === $("ex-bg")) $("ex-bg").hidden = true; });
   $("ex-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
-    const tr = curTrip(), er = $("ex-err");
+    const tr = exT(), er = $("ex-err");
     const name = cap($("ex-name").value.replace(/\s+/g, " ").trim());
     let amt = Math.round(num($("ex-amt").value) * 100) / 100;
     if (!name) { er.textContent = "Напиши, на что потратили."; er.hidden = false; return; }
@@ -1336,13 +1371,67 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     try { await exSave(tr, exp); closeExForm(); } catch (x) { er.textContent = "Не получилось сохранить. Попробуй ещё раз."; er.hidden = false; }
   });
   $("ex-del").onclick = async () => {
-    const tr = curTrip(); if (!exEdit) return;
+    const tr = exT(); if (!exEdit) return;
     try { await exSave(tr, (tr.exp || []).filter(x => x.id !== exEdit.id)); closeExForm(); } catch (x) {}
   };
-  function tripPeople() {
-    const me = meName(), people = [];
+  // ---------- wheels (like the iPhone clock) ----------
+  // makeWheel(box, [{v, t}], value, onChange, cls, loop) → { get, set }; loop: after the last comes the first again
+  function makeWheel(box, opts, value, onChange, cls, loop) {
+    const w = document.createElement("div"); w.className = "wheel" + (cls ? " " + cls : ""); w.tabIndex = 0;
+    const H = 40, vis = box.classList.contains("sm") ? 3 : 5, padN = (vis - 1) / 2, N = opts.length;
+    const R = loop ? 21 : 1, MID = Math.floor(R / 2) * N;   // a loop is the list repeated; we keep near the middle copy
+    const pad = () => { const d = document.createElement("div"); d.className = "pad"; d.setAttribute("aria-hidden", "true"); return d; };
+    if (!loop) for (let i = 0; i < padN; i++) w.appendChild(pad());
+    const rows = [];
+    for (let k = 0; k < R; k++) opts.forEach(o => { const d = document.createElement("div"); d.textContent = o.t; w.appendChild(d); rows.push(d); });
+    if (!loop) for (let i = 0; i < padN; i++) w.appendChild(pad());
+    const off = loop ? padN : 0;   // a loop has no padding rows: the copies above and below fill the window
+    let idx = (loop ? MID : 0) + Math.max(0, opts.findIndex(o => o.v === value)), t = 0;
+    const mark = () => rows.forEach((r, i) => r.classList.toggle("on", i === idx));
+    const top = (i) => (i - off) * H;
+    const goTo = (i, smooth) => { idx = Math.min(rows.length - 1, Math.max(0, i)); w.scrollTo({ top: top(idx), behavior: smooth ? "smooth" : "auto" }); mark(); };
+    w.addEventListener("scroll", () => {
+      const i = Math.min(rows.length - 1, Math.max(0, Math.round(w.scrollTop / H) + off));
+      if (i !== idx) { idx = i; mark(); }
+      clearTimeout(t); t = setTimeout(() => {
+        if (loop && Math.abs(idx - MID) > N * 3) goTo(MID + (idx % N), false);   // quietly back to the middle copy — the spin never ends
+        if (onChange) onChange(opts[idx % N].v);
+      }, 140);
+    }, { passive: true });
+    rows.forEach((r, i) => r.addEventListener("click", () => { goTo(i, true); }));
+    w.addEventListener("keydown", (e) => { if (e.key === "ArrowDown") { goTo(idx + 1, true); e.preventDefault(); } if (e.key === "ArrowUp") { goTo(idx - 1, true); e.preventDefault(); } });
+    box.appendChild(w);
+    requestAnimationFrame(() => goTo(idx, false));
+    return { get: () => opts[idx % N].v, set: (v) => goTo((loop ? MID : 0) + opts.findIndex(o => o.v === v), false), el: w };
+  }
+  // ---------- quick expense: «$» goes to the trip whose dates include today, otherwise asks which one ----------
+  const todayISO = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+  let twWheel = null;
+  $("ex-quick").onclick = () => {
+    const trips = qList().filter(x => x.kind === "trip"), t = todayISO();
+    if (!trips.length) return;
+    closeQv();
+    const now = trips.filter(x => x.from && x.from <= t && (!x.to || t <= x.to));
+    if (now.length === 1) return quickExp(now[0].id);
+    // no trip today (or several at once) → which one? a wheel
+    const list = (now.length ? now : trips).slice().sort((a, b) => ((a.from || "9") < (b.from || "9") ? -1 : 1));
+    const box = $("tw-wheel"); box.textContent = "";
+    twWheel = makeWheel(box, list.map(x => ({ v: x.id, t: x.name + (tripDates(x) ? " · " + tripDates(x) : "") })), list.some(x => x.id === curQ) ? curQ : list[0].id, null, "wide");
+    $("tw-bg").hidden = false;
+  };
+  $("tw-go").onclick = () => { const id = twWheel && twWheel.get(); $("tw-bg").hidden = true; if (id) quickExp(id); };
+  $("tw-bg").addEventListener("click", (e) => { if (e.target === $("tw-bg")) $("tw-bg").hidden = true; });
+  function quickExp(id) {
+    exTripId = id; exQuick = true; exTab = "list";
+    $("ex-bg").hidden = false; openExForm(null);
+  }
+  function tripPeople(tr0) {
+    const tr = tr0 || curTrip(), me = meName(), people = [];
     const add = (n) => { if (n && !people.includes(n)) people.push(n); };
-    add(me); bags.filter(b => b.src || b.owner).forEach(b => add(b.owner || me)); items.filter(it => it.common && !it.in).forEach(it => add(it.takenBy));
+    add(me); if (!tr) return people;
+    if (window.__kolchanTripMembers) window.__kolchanTripMembers(tr.id).forEach(add);
+    rawBags.filter(b => QOF(b) === tr.id && (b.src || b.owner)).forEach(b => add(b.owner || me));
+    rawItems.filter(it => QOF(it) === tr.id && it.common && !it.in).forEach(it => add(it.takenBy));
     return people;
   }
   // «Назначить»: the same list, each thing gets a person from the trip
@@ -1373,8 +1462,33 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   $("sec-who").onclick = () => { over.who = $("sec-who").getAttribute("aria-expanded") !== "true"; render(); };
   $("sec-common").onclick = () => { over.common = $("sec-common").getAttribute("aria-expanded") !== "true"; render(); };
   // new trip
+  // dates: day / month / year wheels, «без дат» turns them off
+  const MONS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+  function dateWheels(box, iso, onChange) {
+    box.textContent = "";
+    const d0 = new Date(iso + "T12:00:00"), y0 = new Date().getFullYear();
+    const st = { d: d0.getDate(), m: d0.getMonth(), y: d0.getFullYear() };
+    const out = () => { const last = new Date(st.y, st.m + 1, 0).getDate(), d = Math.min(st.d, last); return st.y + "-" + String(st.m + 1).padStart(2, "0") + "-" + String(d).padStart(2, "0"); };
+    makeWheel(box, Array.from({ length: 31 }, (_, i) => ({ v: i + 1, t: String(i + 1) })), st.d, v => { st.d = v; onChange && onChange(out()); }, "", true);
+    makeWheel(box, MONS.map((t, i) => ({ v: i, t })), st.m, v => { st.m = v; onChange && onChange(out()); }, "wide", true);
+    makeWheel(box, Array.from({ length: 12 }, (_, i) => ({ v: y0 - 1 + i, t: String(y0 - 1 + i) })), st.y, v => { st.y = v; onChange && onChange(out()); });
+    onChange && onChange(out());
+  }
+  let tpDates = true;
+  function setTpDates(on) {
+    tpDates = on;
+    ["tp-wf", "tp-wt", "tp-to-h"].forEach(id => { $(id).hidden = !on; });
+    $("tp-nodates").textContent = on ? "без дат" : "указать даты";
+  }
+  $("tp-nodates").onclick = () => setTpDates(!tpDates);
+  // «Далее» on the keyboard just hides it — the dates are chosen next
+  $("tp-name").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("tp-name").blur(); } });
   $("tp-add").onclick = () => {
-    $("tp-name").value = ""; $("tp-from").value = ""; $("tp-to").value = ""; $("tp-err").hidden = true;
+    $("tp-name").value = ""; $("tp-err").hidden = true;
+    const t0 = todayISO(), w = new Date(); w.setDate(w.getDate() + 7);
+    const t1 = w.getFullYear() + "-" + String(w.getMonth() + 1).padStart(2, "0") + "-" + String(w.getDate()).padStart(2, "0");
+    setTpDates(true);
+    requestAnimationFrame(() => { dateWheels($("tp-wf"), t0, v => { $("tp-from").value = v; }); dateWheels($("tp-wt"), t1, v => { $("tp-to").value = v; }); });
     closeQv(); $("tp-bg").hidden = false; $("tp-name").focus();
   };
   $("tp-cancel").onclick = () => { $("tp-bg").hidden = true; };
@@ -1384,7 +1498,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const nm = cap($("tp-name").value.replace(/\s+/g, " ").trim()), er = $("tp-err");
     if (!nm) { er.textContent = "Напиши, куда едем."; er.hidden = false; $("tp-name").focus(); return; }
     if (qList().some(x => low(x.name) === low(nm))) { er.textContent = "Такое название уже есть."; er.hidden = false; return; }
-    const from = $("tp-from").value, to = $("tp-to").value;
+    const from = tpDates ? $("tp-from").value : "", to = tpDates ? $("tp-to").value : "";
     if (from && to && to < from) { er.textContent = "Дата «по» раньше, чем «с»."; er.hidden = false; return; }
     const id = "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const order = qList().reduce((m, x) => Math.max(m, x.order || 0), 0) + 10;
@@ -1452,21 +1566,25 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     finally { btn.disabled = false; }
   };
   // invite by link (works once trips are on the server)
-  $("trip-invite").onclick = () => {
+  $("trip-invite").onclick = async () => {
     const tr = curTrip(); if (!tr) return;
-    const link = "https://ducktail1.github.io/Kolchan/#join=" + tr.id;
-    $("ti-title").textContent = "Позвать в «" + tr.name + "»"; $("ti-link").value = link; $("ti-msg").hidden = true;
-    $("ti-tg").href = "https://t.me/share/url?url=" + encodeURIComponent(link) + "&text=" + encodeURIComponent("Зову в поездку «" + tr.name + "» в Колчане");
+    $("ti-title").textContent = "Позвать в «" + tr.name + "»"; $("ti-link").value = "Готовлю ссылку…"; $("ti-msg").hidden = true;
+    $("ti-tg").hidden = true; $("ti-copy").hidden = true; $("ti-note").hidden = true;
     $("ti-bg").hidden = false;
+    const r = window.__kolchanTripInvite ? await window.__kolchanTripInvite(tr.id) : { error: "Общие поездки здесь недоступны." };
+    if (r.error) { $("ti-link").value = ""; $("ti-link").hidden = true; const m = $("ti-msg"); m.className = "err"; m.textContent = r.error; m.hidden = false; return; }
+    $("ti-link").hidden = false; $("ti-link").value = r.link; $("ti-tg").hidden = false; $("ti-copy").hidden = false; $("ti-note").hidden = false;
+    $("ti-tg").href = "https://t.me/share/url?url=" + encodeURIComponent(r.link) + "&text=" + encodeURIComponent("Зову в поездку «" + tr.name + "» в Колчане");
   };
   $("ti-copy").onclick = async () => {
     const m = $("ti-msg");
+    m.className = "ok";
     try { await navigator.clipboard.writeText($("ti-link").value); m.textContent = "Ссылка скопирована."; } catch (e) { $("ti-link").select(); m.textContent = "Выдели ссылку и скопируй вручную."; }
     m.hidden = false;
   };
   // ✕ in the corner instead of «Готово»
   const xClose = (bg) => () => { $(bg).hidden = true; };
-  document.addEventListener("DOMContentLoaded", () => setTimeout(() => { if (window.__kolchanX) { window.__kolchanX($("ti"), xClose("ti-bg")); window.__kolchanX($("tm"), xClose("tm-bg")); window.__kolchanX($("ta"), xClose("ta-bg")); window.__kolchanX($("ex"), xClose("ex-bg")); } }, 0));
+  document.addEventListener("DOMContentLoaded", () => setTimeout(() => { if (window.__kolchanX) { window.__kolchanX($("ti"), xClose("ti-bg")); window.__kolchanX($("tm"), xClose("tm-bg")); window.__kolchanX($("ta"), xClose("ta-bg")); window.__kolchanX($("ex"), xClose("ex-bg")); window.__kolchanX($("tw"), xClose("tw-bg")); } }, 0));
   // tap the avatars: who is on this trip
   $("trip-avs").onclick = () => {
     const tr = curTrip(); if (!tr) return;
@@ -1474,7 +1592,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const tripBags = bags.filter(b => b.src || b.owner), common = items.filter(it => it.common && !it.in);
     const people = [];
     const add = (n) => { if (n && !people.includes(n)) people.push(n); };
-    add(me); tripBags.forEach(b => add(b.owner || me)); common.forEach(it => add(it.takenBy));
+    add(me); if (window.__kolchanTripMembers) window.__kolchanTripMembers(tr.id).forEach(add);
+    tripBags.forEach(b => add(b.owner || me)); common.forEach(it => add(it.takenBy));
     people.forEach((n, i) => {
       const bs = tripBags.filter(b => (b.owner || me) === n), cs = common.filter(it => it.takenBy === n);
       const row = document.createElement("div"); row.className = "tm-row";
@@ -1946,6 +2065,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     $("mv-open").hidden = !db || !!mode || !!curTrip();
     $("ex-open").hidden = !db || !!mode || !curTrip() || !!cur.length || showMissing;
     if (!$("ex-bg").hidden && $("ex-form").hidden) renderEx();
+    $("ex-quick").hidden = !db || !quivers.some(x => x.kind === "trip");
 
     const list = $("list"); list.textContent = "";
     if (!shown.length) {
@@ -2570,6 +2690,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const tch = e.touches[0];
     const h2 = sh.querySelector("h2");
     const headBottom = h2 ? h2.getBoundingClientRect().bottom + 10 : sh.getBoundingClientRect().top + 64;
+    if (e.target.closest(".wheel")) { g = null; return; }   // a wheel scrolls itself, the window stays
     let kind = null;
     const scroller = e.target.closest(".mv-list") || sh;
     const kb = document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);   // keyboard open: a swipe down only hides it

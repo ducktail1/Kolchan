@@ -16,7 +16,7 @@
 
   // ---------- auth (Supabase GoTrue over plain fetch) ----------
   let session = null;   // { access_token, refresh_token, expires_at, user: { id, email } }
-  const saveSession = async (s) => { session = s; if (s) await K.put("meta", Object.assign({ key: "cloudSession" }, s)); else await K.put("meta", { key: "cloudSession", none: true }); paint(); if (window.__kolchanRemind) window.__kolchanRemind(); };
+  const saveSession = async (s) => { session = s; if (s) await K.put("meta", Object.assign({ key: "cloudSession" }, s)); else await K.put("meta", { key: "cloudSession", none: true }); paint(); if (window.__kolchanRemind) window.__kolchanRemind(); if (s && joinPend) setTimeout(doJoin, 0); };
   const metaOf = (u) => { const m = (u && u.user_metadata) || {}; return { name: m.name || "", phone: m.phone || "", tg_id: m.tg_id || null, tg_username: m.tg_username || "" }; };
   const fromAuth = (j) => ({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at ? j.expires_at * 1000 : Date.now() + (j.expires_in || 3600) * 1000, user: { id: j.user && j.user.id, email: (j.user && (j.user.email || (j.user.user_metadata && j.user.user_metadata.email))) || "", meta: metaOf(j.user) } });
   // accounts made through Telegram get a service address that is never shown
@@ -107,8 +107,18 @@
       if (!navigator.onLine) { setState("Нет интернета — синхронизирую, когда появится."); return; }
       setState("Синхронизирую…");
       try {
-        const local = Object.fromEntries(await Promise.all(DATA.map(async c => [c, await K.all(c)])));
-        const remote = await pullAll();
+        const localAll = Object.fromEntries(await Promise.all(DATA.map(async c => [c, await K.all(c)])));
+        const remoteAll = await pullAll();
+        // shared trips live in their own table; my personal records keep everything else
+        const trips = await tripList();   // null = the trips tables are not set up yet
+        const tripIds = new Set();
+        if (trips) {
+          trips.mine.forEach(t => tripIds.add(t));
+          [localAll, remoteAll.data].forEach(d => (d.quivers || []).forEach(q => { if (q.kind === "trip") tripIds.add(q.id); }));
+        }
+        const [local, localTrip] = splitTrips(localAll, tripIds);
+        const [remoteData, remoteTrip] = splitTrips(remoteAll.data, tripIds);
+        const remote = { data: remoteData };
         const base = await K.get("meta", "cloudBase");
         const baseIds = base && base.user === session.user.id ? base.ids : null;
         const merged = S.merge(local, remote.data, baseIds);
@@ -119,9 +129,14 @@
           const M = new Set(merged[c].map(r => r.id));
           merged[c].forEach(r => { const o = R.get(r.id); if (!o || canon(o) !== canon(r)) { const d = Object.assign({}, r); delete d.id; rows.push({ user_id: uid, coll: c, id: r.id, data: d, deleted: false }); } });
           remote.data[c].forEach(r => { if (!M.has(r.id)) rows.push({ user_id: uid, coll: c, id: r.id, data: {}, deleted: true }); });
+          // trip records that got into my personal table earlier now live with the trip
+          remoteTrip[c].forEach(r => rows.push({ user_id: uid, coll: c, id: r.id, data: {}, deleted: true }));
         });
         if (rows.length) await upsert(rows);
-        if (!S.sameData(merged, local)) { await K.replaceData(merged); await Promise.all(DATA.map(K.emit)); }
+        const tripData = trips ? await syncTrips(tripIds, trips, localTrip) : localTrip;
+        const all = Object.fromEntries(DATA.map(c => [c, merged[c].concat(tripData[c] || [])]));
+        if (!S.sameData(all, localAll)) { await K.replaceData(all); await Promise.all(DATA.map(K.emit)); }
+        else if (trips) await K.emit("quivers");   // members may have changed
         const t = Date.now();
         await K.put("meta", { key: "cloudBase", t, user: uid, ids: Object.fromEntries(DATA.map(c => [c, merged[c].map(r => r.id)])) });
         lastErr = "";
@@ -134,6 +149,108 @@
     })();
     try { await running; } finally { running = null; }
   }
+  // ---------- shared trips: table trip_records, members in trip_members ----------
+  let tripMembers = {};   // trip id → [names]
+  window.__kolchanTripMembers = (t) => tripMembers[t] || [];
+  const myName = () => { const n = session ? shownName(session.user) : ""; return n.includes("@") ? n.split("@")[0] : n || "Я"; };
+  async function tripList() {
+    try {
+      const rows = await rest("trip_members?select=trip_id,user_id,name");
+      const mine = new Set(), names = {};
+      (rows || []).forEach(r => { if (r.user_id === session.user.id) mine.add(r.trip_id); (names[r.trip_id] = names[r.trip_id] || []).push(r.name || "?"); });
+      tripMembers = names;
+      return { mine };
+    } catch (e) {
+      if (e.status === 404 || /trip_members|schema cache|does not exist/i.test(e.message || "")) return null;   // SQL for trips not run yet
+      throw e;
+    }
+  }
+  function splitTrips(data, ids) {
+    const mine = {}, trip = {};
+    DATA.forEach(c => {
+      mine[c] = []; trip[c] = [];
+      (data[c] || []).forEach(r => {
+        const isTrip = c === "quivers" ? (r.kind === "trip" || ids.has(r.id)) : ids.has(r.q);
+        (isTrip ? trip : mine)[c].push(r);
+      });
+    });
+    return [mine, trip];
+  }
+  const randTok = (n) => { const a = new Uint8Array(n); crypto.getRandomValues(a); return Array.from(a, x => "abcdefghijkmnopqrstuvwxyz23456789"[x % 33]).join(""); };
+  async function syncTrips(ids, trips, localTrip) {
+    const out = Object.fromEntries(DATA.map(c => [c, []]));
+    for (const t of ids) {
+      const mineL = Object.fromEntries(DATA.map(c => [c, localTrip[c].filter(r => c === "quivers" ? r.id === t : r.q === t)]));
+      const bKey = "tripBase:" + t, base = await K.get("meta", bKey);
+      if (!trips.mine.has(t)) {
+        if (base && base.ids) { await K.put("meta", { key: bKey, none: true }); continue; }   // the trip was removed or I left it → drop it here too
+        if (!mineL.quivers.length) continue;
+        // a trip made on this phone goes to the server: I am its owner and first member
+        await rest("trips", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ id: t, invite: randTok(20) }) });
+        await rest("trip_members", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ trip_id: t, name: myName() }) });
+        tripMembers[t] = [myName()];
+      }
+      const rows = [];
+      for (let from = 0; ; from += 1000) {
+        const part = await rest("trip_records?trip_id=eq." + encodeURIComponent(t) + "&select=coll,id,data,deleted&order=coll,id", { headers: { Range: from + "-" + (from + 999), "Range-Unit": "items" } });
+        rows.push(...(part || [])); if (!part || part.length < 1000) break;
+      }
+      const remote = Object.fromEntries(DATA.map(c => [c, []]));
+      rows.forEach(r => { if (remote[r.coll] && !r.deleted) remote[r.coll].push(Object.assign({}, r.data, { id: r.id })); });
+      const merged = S.merge(mineL, remote, base && base.ids);
+      const up = [];
+      DATA.forEach(c => {
+        const R = new Map(remote[c].map(r => [r.id, r])), M = new Set(merged[c].map(r => r.id));
+        merged[c].forEach(r => { const o = R.get(r.id); if (!o || canon(o) !== canon(r)) { const d = Object.assign({}, r); delete d.id; up.push({ trip_id: t, coll: c, id: r.id, data: d, deleted: false }); } });
+        remote[c].forEach(r => { if (!M.has(r.id)) up.push({ trip_id: t, coll: c, id: r.id, data: {}, deleted: true }); });
+        out[c].push(...merged[c]);
+      });
+      for (let i = 0; i < up.length; i += 200) await rest("trip_records?on_conflict=trip_id,coll,id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(up.slice(i, i + 200)) });
+      await K.put("meta", { key: bKey, ids: Object.fromEntries(DATA.map(c => [c, merged[c].map(r => r.id)])) });
+    }
+    return out;
+  }
+  // «Позвать»: the invite link (the trip goes to the server first)
+  window.__kolchanTripInvite = async (t) => {
+    if (!ready) return { error: "Общие поездки здесь недоступны." };
+    if (!session) return { error: "Чтобы позвать друзей, войди в аккаунт: меню справа вверху → «Войти»." };
+    await syncNow(true);
+    let r; try { r = await rest("trips?id=eq." + encodeURIComponent(t) + "&select=invite"); } catch (e) { return { error: lastErr || "Нет связи с сервером." }; }
+    if (!r || !r[0]) return { error: lastErr || "Не получилось подготовить ссылку. Проверь интернет и попробуй ещё раз." };
+    return { link: location.href.split("#")[0] + "#join=" + t + "." + r[0].invite };
+  };
+  // remove a trip: the owner deletes it for everybody, a member leaves it
+  window.__kolchanTripDrop = async (t) => {
+    if (!ready || !session) return;
+    try {
+      const own = await rest("trips?id=eq." + encodeURIComponent(t) + "&select=owner");
+      if (own && own[0] && own[0].owner === session.user.id) await rest("trips?id=eq." + encodeURIComponent(t), { method: "DELETE" });
+      else await rest("trip_members?trip_id=eq." + encodeURIComponent(t) + "&user_id=eq." + session.user.id, { method: "DELETE" });
+    } catch (e) {}
+  };
+  // opening an invite link: #join=<trip>.<code>
+  let joinPend = null;
+  function takeJoin() {
+    const m = /[#&]join=([A-Za-z0-9]+)(?:\.([A-Za-z0-9]+))?/.exec(location.hash || "");
+    if (!m) return;
+    history.replaceState(null, "", location.href.split("#")[0]);
+    joinPend = { t: m[1], inv: m[2] || "" };
+    K.put("meta", Object.assign({ key: "joinPending" }, joinPend));
+  }
+  async function doJoin() {
+    if (!joinPend || !session) return;
+    const j = joinPend; joinPend = null; await K.put("meta", { key: "joinPending", none: true }); gate();
+    const say = (t) => { if (window.__kolchanStatus) window.__kolchanStatus(t); };
+    if (!j.inv) { say("Эта ссылка-приглашение старого вида. Попроси прислать новую — из кнопки «Позвать» в поездке."); return; }
+    try {
+      const ok = await rest("rpc/join_trip", { method: "POST", body: JSON.stringify({ p_trip: j.t, p_invite: j.inv, p_name: myName() }) });
+      if (!ok) { say("Ссылка-приглашение не подошла: поездку удалили или ссылку сменили. Попроси новую."); return; }
+      await syncNow(true);
+      if (window.__kolchanSwitchQ) window.__kolchanSwitchQ(j.t);
+      say("Ты в поездке! Возьми сюда свои сумки — кнопка «Взять сумку» внизу.");
+    } catch (e) { say(e.code === "network" ? "Нет связи с сервером — открой ссылку ещё раз, когда появится интернет." : "Не получилось присоединиться: " + e.message); }
+  }
+
   // changes on the phone → sync a few seconds later (replaces the GitHub sync in the beta)
   window.__syncSoon = () => { clearTimeout(timer); timer = setTimeout(() => syncNow(false), 4000); };
 
@@ -238,6 +355,7 @@
 .sheet-bg.gate .sheet > h2, .sheet-bg.gate #acc-out > .note:first-child { display: none; }
 .gate-head .logo { font-family: var(--font-display); font-size: 34px; font-weight: 700; }
 .gate-head p { color: var(--muted); margin: 8px 0 0; }
+.gate-head p.join-note { color: var(--ink); font-weight: 600; background: var(--surface); border: 1px solid var(--accent); border-radius: 12px; padding: 10px 12px; }
 .cloud-sync { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .cloud-sync .cs-t { font-weight: 600; }
 .sheet-bg:not(.gate) #acc-local { display: none; }
@@ -253,7 +371,9 @@
   let gateWas = false;
   function gate() {
     const sh = $("acc-bg"); if (!sh || !ready) return;
-    const on = !session && !localOk;
+    const on = !session && (!localOk || !!joinPend);   // an invite link needs an account
+    const jn = $("acc-join-note"); if (jn) jn.hidden = !joinPend;
+    const lo = $("acc-local"); if (lo) lo.hidden = !!joinPend;
     sh.classList.toggle("gate", on);
     if (on) sh.hidden = false;
     $("acc-close").parentElement.parentElement.hidden = on || !!window.__KOLCHAN_AVA;
@@ -310,7 +430,7 @@
     const pbtn = (id, label, icon) => prov.includes(id)
       ? '<button type="button" data-p="' + id + '">' + icon + label + "</button>"
       : '<button type="button" data-p="' + id + '" disabled aria-label="' + label + ' — скоро"><span class="pl">' + icon + label + '</span><span class="soon"><b>SOON</b></span></button>';
-    sh.innerHTML = '<div class="sheet"><div class="gate-head"><div class="logo">Колчан' + (BETA ? ' <span class="beta-tag">β</span>' : "") + '</div><p>Войди или зарегистрируйся — база будет храниться онлайн и одинаково на всех твоих устройствах.</p></div><h2>Аккаунт</h2>' +
+    sh.innerHTML = '<div class="sheet"><div class="gate-head"><div class="logo">Колчан' + (BETA ? ' <span class="beta-tag">β</span>' : "") + '</div><p>Войди или зарегистрируйся — база будет храниться онлайн и одинаково на всех твоих устройствах.</p><p class="join-note" id="acc-join-note" hidden>Тебя позвали в поездку. Войди или зарегистрируйся — и она откроется.</p></div><h2>Аккаунт</h2>' +
       '<div id="acc-out">' +
         '<div class="note" style="margin-bottom:12px">Войди, чтобы база хранилась онлайн и была одинаковой на всех устройствах. Без входа всё работает как раньше — только на этом телефоне.</div>' +
         '<div class="acc-tabs"><button type="button" id="acc-tab-in">Вход</button><button type="button" id="acc-tab-up">Регистрация</button></div>' +
@@ -407,6 +527,8 @@
     };
 
     const lm = await K.get("meta", "localMode"); localOk = !BETA && !!(lm && lm.on);
+    takeJoin();
+    if (!joinPend) { const jp = await K.get("meta", "joinPending"); if (jp && jp.t) joinPend = { t: jp.t, inv: jp.inv || "" }; }
     const s = await K.get("meta", "cloudSession");
     session = s && s.access_token ? { access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at, user: s.user } : null;
     paint();
@@ -415,7 +537,7 @@
       if (session) {
         const base = await K.get("meta", "cloudBase");
         setState(base && base.t ? "Синхронизировано: " + fmt.format(new Date(base.t)) : "");
-        syncNow(false);
+        if (joinPend) doJoin(); else syncNow(false);
       }
     }
     const tp = await K.get("meta", "tgPending");

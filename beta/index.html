@@ -538,7 +538,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <input id="ti-link" class="ti-link" readonly aria-label="Ссылка-приглашение">
     <div class="row2"><a class="primary" id="ti-tg" href="#" target="_blank" rel="noopener">Отправить в Telegram</a><button type="button" id="ti-copy">Скопировать</button></div>
     <div class="ok" id="ti-msg" hidden></div>
-    <div class="note">Пока поездка есть только у тебя: общий доступ включим вместе с сервером для поездок, тогда ссылка и заработает. Друг откроет её, войдёт в аккаунт — и поездка появится у него в меню.</div>
+    <div class="note" id="ti-note">Друг откроет ссылку, войдёт в аккаунт — и поездка появится у него в меню колчанов. Всё, что вы добавите, видно обоим.</div>
   </div>
 </div>
 <div class="sheet-bg" id="tx-bg" hidden>
@@ -688,7 +688,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <h2>Данные</h2>
     <div class="note" id="d-stat"></div>
     <div class="note" id="d-last"></div>
-    <div class="note">Версия Колчана: <b>1.6.0-beta.18</b></div>
+    <div class="note">Версия Колчана: <b>1.7.0-beta.19</b></div>
     <div class="dataBtns">
       <button type="button" class="primary" id="d-export">Выгрузить файл</button>
       <label>Загрузить файл <span class="hint">заменит всю базу на этом телефоне</span>
@@ -716,7 +716,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="actions"><div class="right"><button type="button" id="d-close">Закрыть</button></div></div>
   </div>
 </div>
-<script>window.__KOLCHAN_VERSION = "1.6.0-beta.18";</script>
+<script>window.__KOLCHAN_VERSION = "1.7.0-beta.19";</script>
 <script>window.__KOLCHAN_AVA = true;</script>
 <script src="local.js"></script>
 <script src="friends.js"></script>
@@ -899,6 +899,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     el.hidden = tr ? !tripDates(tr) : ql.length < 2 && qName(curQ) === MAIN_NAME;
     if (!$("qv-bg").hidden) renderQv();
   }
+  window.__kolchanSwitchQ = (id) => { if (qList().some(x => x.id === id)) switchQ(id); };
+  window.__kolchanStatus = (t) => setStatus(t);
   function switchQ(id) {
     curQ = id; lsSet("kolchanb.q", id);
     $("q").value = ""; cur = []; showMissing = false; over = {}; levelMem = {}; navStack = [];
@@ -918,13 +920,23 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
         const inp = document.createElement("input"); inp.value = x.name; inp.autocomplete = "off"; inp.setAttribute("aria-label", "Название колчана");
         const row = document.createElement("div"); row.className = "row2";
         const empty = x.id !== MAINQ && ![rawPlaces, rawBags, rawItems].some(a => a.some(r => QOF(r) === x.id && !(a === rawPlaces && (r.name === "С собой" || r.name === "В пути"))));
-        const del = document.createElement("button"); del.type = "button"; del.className = "danger"; del.textContent = "Удалить"; del.hidden = !empty;
+        const isTripQ = x.kind === "trip";
+        const del = document.createElement("button"); del.type = "button"; del.className = "danger"; del.textContent = isTripQ ? "Удалить поездку" : "Удалить"; del.hidden = !empty && !isTripQ;
         const cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = "Отмена";
         const save = document.createElement("button"); save.type = "submit"; save.className = "primary"; save.textContent = "Сохранить";
         row.append(del, cancel, save); f.append(inp, row);
-        if (x.id !== MAINQ && !empty) { const nt = document.createElement("div"); nt.className = "note"; nt.textContent = "Удалить можно только пустой колчан."; f.appendChild(nt); }
+        if (isTripQ) { const nt = document.createElement("div"); nt.className = "note"; nt.textContent = "Если поездку создал ты — она удалится у всех. Если тебя позвали — ты из неё выйдешь, у остальных она останется."; f.appendChild(nt); }
+        else if (x.id !== MAINQ && !empty) { const nt = document.createElement("div"); nt.className = "note"; nt.textContent = "Удалить можно только пустой колчан."; f.appendChild(nt); }
         cancel.onclick = () => { qvEdit = null; renderQv(); };
+        let confirmDel = false;
         del.onclick = async () => {
+          if (isTripQ) {
+            if (!confirmDel) { confirmDel = true; del.textContent = "Точно удалить?"; return; }
+            if (window.__kolchanTripDrop) await window.__kolchanTripDrop(x.id);
+            // the trip's things go away from this phone (copies; the originals stay in their quivers)
+            for (const r of rawItems.filter(r => QOF(r) === x.id)) await db.collection("items").doc(r.id).delete();
+            for (const r of rawBags.filter(r => QOF(r) === x.id)) await db.collection("bags").doc(r.id).delete();
+          }
           for (const r of rawPlaces.filter(r => QOF(r) === x.id)) await db.collection("places").doc(r.id).delete();
           await db.collection("quivers").doc(x.id).delete();
           qvEdit = null; if (curQ === x.id) switchQ(MAINQ); else renderQv();
@@ -1026,7 +1038,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const common = items.filter(it => it.common && !it.in);
     const owners = [];
     const addOwner = (n) => { if (n && !owners.includes(n)) owners.push(n); };
-    addOwner(me); tripBags.forEach(b => addOwner(b.owner || me)); common.forEach(it => addOwner(it.takenBy));
+    addOwner(me);
+    if (window.__kolchanTripMembers) window.__kolchanTripMembers(tr.id).forEach(addOwner); tripBags.forEach(b => addOwner(b.owner || me)); common.forEach(it => addOwner(it.takenBy));
     const av = $("trip-avs"); av.textContent = ""; owners.slice(0, 5).forEach((n, i) => av.appendChild(avatar(n, i)));
     const total = inBags.length + common.length, done = inBags.filter(it => it.taken).length + common.filter(it => it.takenBy && it.bought).length;
     $("trip-prog").textContent = total ? "Собрано " + done + " из " + total : "Пока ничего не собрано";
@@ -1342,7 +1355,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   function tripPeople() {
     const me = meName(), people = [];
     const add = (n) => { if (n && !people.includes(n)) people.push(n); };
-    add(me); bags.filter(b => b.src || b.owner).forEach(b => add(b.owner || me)); items.filter(it => it.common && !it.in).forEach(it => add(it.takenBy));
+    add(me);
+    const tr = curTrip(); if (tr && window.__kolchanTripMembers) window.__kolchanTripMembers(tr.id).forEach(add); bags.filter(b => b.src || b.owner).forEach(b => add(b.owner || me)); items.filter(it => it.common && !it.in).forEach(it => add(it.takenBy));
     return people;
   }
   // «Назначить»: the same list, each thing gets a person from the trip
@@ -1452,15 +1466,19 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     finally { btn.disabled = false; }
   };
   // invite by link (works once trips are on the server)
-  $("trip-invite").onclick = () => {
+  $("trip-invite").onclick = async () => {
     const tr = curTrip(); if (!tr) return;
-    const link = "https://ducktail1.github.io/Kolchan/#join=" + tr.id;
-    $("ti-title").textContent = "Позвать в «" + tr.name + "»"; $("ti-link").value = link; $("ti-msg").hidden = true;
-    $("ti-tg").href = "https://t.me/share/url?url=" + encodeURIComponent(link) + "&text=" + encodeURIComponent("Зову в поездку «" + tr.name + "» в Колчане");
+    $("ti-title").textContent = "Позвать в «" + tr.name + "»"; $("ti-link").value = "Готовлю ссылку…"; $("ti-msg").hidden = true;
+    $("ti-tg").hidden = true; $("ti-copy").hidden = true; $("ti-note").hidden = true;
     $("ti-bg").hidden = false;
+    const r = window.__kolchanTripInvite ? await window.__kolchanTripInvite(tr.id) : { error: "Общие поездки здесь недоступны." };
+    if (r.error) { $("ti-link").value = ""; $("ti-link").hidden = true; const m = $("ti-msg"); m.className = "err"; m.textContent = r.error; m.hidden = false; return; }
+    $("ti-link").hidden = false; $("ti-link").value = r.link; $("ti-tg").hidden = false; $("ti-copy").hidden = false; $("ti-note").hidden = false;
+    $("ti-tg").href = "https://t.me/share/url?url=" + encodeURIComponent(r.link) + "&text=" + encodeURIComponent("Зову в поездку «" + tr.name + "» в Колчане");
   };
   $("ti-copy").onclick = async () => {
     const m = $("ti-msg");
+    m.className = "ok";
     try { await navigator.clipboard.writeText($("ti-link").value); m.textContent = "Ссылка скопирована."; } catch (e) { $("ti-link").select(); m.textContent = "Выдели ссылку и скопируй вручную."; }
     m.hidden = false;
   };
@@ -1474,7 +1492,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const tripBags = bags.filter(b => b.src || b.owner), common = items.filter(it => it.common && !it.in);
     const people = [];
     const add = (n) => { if (n && !people.includes(n)) people.push(n); };
-    add(me); tripBags.forEach(b => add(b.owner || me)); common.forEach(it => add(it.takenBy));
+    add(me); if (window.__kolchanTripMembers) window.__kolchanTripMembers(tr.id).forEach(add);
+    tripBags.forEach(b => add(b.owner || me)); common.forEach(it => add(it.takenBy));
     people.forEach((n, i) => {
       const bs = tripBags.filter(b => (b.owner || me) === n), cs = common.filter(it => it.takenBy === n);
       const row = document.createElement("div"); row.className = "tm-row";

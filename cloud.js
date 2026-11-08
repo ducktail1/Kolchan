@@ -250,12 +250,16 @@
   function setState(text, bad) { const el = $("acc-state"); if (el) { el.textContent = text || ""; el.className = bad ? "err" : "note"; } const b = $("data-open"); if (b) b.textContent = bad ? "Данные ⚠" : "Данные"; }
   window.__kolchanAccount = () => (session ? { email: shownName(session.user) } : null);
   // no session in the beta → the sign-in screen covers the app and cannot be closed
+  let gateWas = false;
   function gate() {
     const sh = $("acc-bg"); if (!sh || !ready) return;
     const on = !session && !localOk;
     sh.classList.toggle("gate", on);
     if (on) sh.hidden = false;
-    $("acc-close").parentElement.parentElement.hidden = on;
+    $("acc-close").parentElement.parentElement.hidden = on || !!window.__KOLCHAN_AVA;
+    // no keyboard popping up by itself on the sign-in screen
+    if (on && !gateWas && document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    gateWas = on;
   }
   function paint() {
     gate();
@@ -345,6 +349,7 @@
     const open = () => { err(""); paint(); sh.hidden = false; };
     ab.onclick = open;
     $("acc-close").onclick = () => { sh.hidden = true; };
+    if (window.__kolchanX && window.__KOLCHAN_AVA) { window.__kolchanX(sh.querySelector(".sheet"), () => { sh.hidden = true; }); }
     sh.addEventListener("click", (e) => { if (e.target === sh && !sh.classList.contains("gate")) sh.hidden = true; });
     $("acc-tab-in").onclick = () => { mode = "in"; err(""); paint(); };
     $("acc-tab-up").onclick = () => { mode = "up"; err(""); paint(); };

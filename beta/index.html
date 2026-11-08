@@ -130,6 +130,8 @@ button.link { border: 0; background: none; padding: 4px 2px; color: var(--accent
 .item:last-child { border-bottom: 0; }
 .box { width: 22px; height: 22px; border: 2px solid var(--muted); border-radius: 6px; margin-top: 12px; display: grid; place-items: center; font-size: 14px; color: var(--accent-ink); box-sizing: border-box; }
 .item.on .box { background: var(--accent); border-color: var(--accent); }
+.thumb.bagth { background: var(--bag-soft); color: var(--ink); }
+.item .cnt { color: var(--muted); font-weight: 400; }
 .thumb { width: 48px; height: 48px; border-radius: 10px; background: var(--bg); display: grid; place-items: center; font-family: var(--font-display); font-size: 18px; color: var(--muted); overflow: hidden; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; }
 .body { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
@@ -165,6 +167,8 @@ button.link { border: 0; background: none; padding: 4px 2px; color: var(--accent
 .sheet-bg { position: fixed; inset: 0; background: var(--overlay); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
 .sheet { background: var(--bg); width: 100%; max-width: 560px; max-height: 92%; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 18px) max(16px, env(safe-area-inset-left, 0px)); box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; }
 @media (min-width: 640px) { .sheet-bg { align-items: center; } .sheet { border-radius: 18px; } }
+.found { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: var(--danger-soft); }
+.found span { flex: 1 1 160px; font-size: 14px; }
 .sheet h2 { font-family: var(--font-display); font-weight: 600; font-size: 18px; margin: 0; }
 label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
@@ -223,16 +227,6 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <button type="button" class="sec" id="sec-tr" aria-expanded="false"><span class="sec-t">Перемещения</span><span class="sec-n" id="sec-tr-n"></span><span class="caret" aria-hidden="true"></span></button>
     <div class="list" id="tr-list" hidden></div>
   </div>
-  <div class="group" id="bags-group" hidden>
-    <button type="button" class="sec" id="sec-bags" aria-expanded="false"><span class="sec-t">Сумки</span><span class="sec-n" id="sec-bags-n"></span><span class="caret" aria-hidden="true"></span></button>
-    <div class="chips" id="bags"></div>
-    <form class="search" id="nb" hidden>
-      <input id="nb-name" placeholder="Название сумки" autocomplete="off">
-      <button type="submit" class="primary">Добавить</button>
-      <button type="button" id="nb-cancel">Отмена</button>
-    </form>
-  </div>
-
   <div class="group" id="places-group">
     <button type="button" class="sec" id="sec-places" aria-expanded="false"><span class="sec-t" id="places-h">Места</span><span class="sec-n" id="sec-places-n"></span><span class="caret" aria-hidden="true"></span></button>
     <div class="chips" id="chips"></div>
@@ -240,6 +234,16 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       <input id="np-name" placeholder="Новое место, например «Гараж»" autocomplete="off">
       <button type="submit" class="primary">Добавить</button>
       <button type="button" id="np-cancel">Отмена</button>
+    </form>
+  </div>
+
+  <div class="group" id="bags-group" hidden>
+    <button type="button" class="sec" id="sec-bags" aria-expanded="false"><span class="sec-t">Сумки</span><span class="sec-n" id="sec-bags-n"></span><span class="caret" aria-hidden="true"></span></button>
+    <div class="list" id="bags"></div>
+    <form class="search" id="nb" hidden>
+      <input id="nb-name" placeholder="Название сумки" autocomplete="off">
+      <button type="submit" class="primary">Добавить</button>
+      <button type="button" id="nb-cancel">Отмена</button>
     </form>
   </div>
 
@@ -425,6 +429,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 <div class="sheet-bg" id="sheet-bg" hidden>
   <form class="sheet" id="form" novalidate>
     <h2 id="f-title">Новая вещь</h2>
+    <div class="found" id="f-found-wrap" hidden><span>Не нашлась при сверке или приёмке.</span><button type="button" class="primary" id="f-found">Вещь нашлась</button></div>
     <label>Что <span class="hint" id="f-name-hint">можно несколько через запятую</span>
       <input id="f-name" required placeholder="Например, маска, баф, варежки" autocomplete="off">
     </label>
@@ -478,7 +483,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <h2>Данные</h2>
     <div class="note" id="d-stat"></div>
     <div class="note" id="d-last"></div>
-    <div class="note">Версия Колчана: <b>1.5.0-beta.16</b></div>
+    <div class="note">Версия Колчана: <b>1.5.1-beta.17</b></div>
     <div class="dataBtns">
       <button type="button" class="primary" id="d-export">Выгрузить файл</button>
       <label>Загрузить файл <span class="hint">заменит всю базу на этом телефоне</span>
@@ -506,7 +511,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="actions"><div class="right"><button type="button" id="d-close">Закрыть</button></div></div>
   </div>
 </div>
-<script>window.__KOLCHAN_VERSION = "1.5.0-beta.16";</script>
+<script>window.__KOLCHAN_VERSION = "1.5.1-beta.17";</script>
 <script>window.__KOLCHAN_AVA = true;</script>
 <script src="local.js"></script>
 <script src="friends.js"></script>
@@ -533,11 +538,14 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   // so coming back up shows it the way it was left; going deeper starts fresh
   let levelMem = {};
   const levelKey = () => (showMissing ? "!" : "") + cur.join("\u0001");
-  function goTo(nc, miss) {
+  // swipe back returns to the screen you came from (like Android «назад»), not one level up the tree
+  let navStack = [];
+  function goTo(nc, miss, back) {
     levelMem[levelKey()] = { over: Object.assign({}, over), y: window.scrollY };
+    if (!back) { navStack.push({ cur: cur.slice(), miss: showMissing }); if (navStack.length > 60) navStack.shift(); }
     const wasDepth = cur.length + (showMissing ? 1 : 0);
     cur = nc; showMissing = !!miss;
-    const up = cur.length + (showMissing ? 1 : 0) < wasDepth;
+    const up = back || cur.length + (showMissing ? 1 : 0) < wasDepth;
     const m = up ? levelMem[levelKey()] : null;
     over = m ? Object.assign({}, m.over) : {};
     endMode(); render();
@@ -549,11 +557,18 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   const norm = (s) => (s || "").split("/").map(x => x.trim()).filter(Boolean);
   const pathStr = (parts) => parts.join(" / ");
   const low = (s) => (s || "").toLowerCase();
+  const cap = (s) => (s ? s.charAt(0).toLocaleUpperCase("ru") + s.slice(1) : s);   // names start with a capital letter
   const fmt = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const LOG_MAX = 80;
   const addLog = (log, e) => (Array.isArray(log) ? log : []).concat(e).slice(-LOG_MAX);
 
   // after something new is added, the search box starts empty again
+  function goBack() {
+    const p = navStack.pop();
+    if (p) goTo(p.cur, p.miss, true);
+    else if (showMissing) goTo(cur, false, true);
+    else goTo(cur.slice(0, -1), false, true);
+  }
   function clearQ() { if ($("q").value) { $("q").value = ""; over = {}; render(); } }
   function setStatus(msg) { const s = $("status"); s.textContent = msg || ""; s.hidden = !msg; }
   function plural(n, f) { const a = n % 10, b = n % 100; return f[(a === 1 && b !== 11) ? 0 : (a >= 2 && a <= 4 && (b < 12 || b > 14)) ? 1 : 2]; }
@@ -668,7 +683,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   }
   function switchQ(id) {
     curQ = id; lsSet("kolchanb.q", id);
-    $("q").value = ""; cur = []; showMissing = false; over = {}; levelMem = {};
+    $("q").value = ""; cur = []; showMissing = false; over = {}; levelMem = {}; navStack = [];
     applyQ(); render(); window.scrollTo(0, 0);
   }
   let qvEdit = null;
@@ -737,25 +752,34 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     // move the page content, not .wrap itself: a transform on .wrap would drag the fixed buttons along
     const parts = () => [...wrap.children].filter(el => !el.hidden && getComputedStyle(el).position !== "fixed");
     const paint = (els, x, op, tr) => els.forEach(el => { el.style.transition = tr || "none"; el.style.transform = x ? "translate3d(" + x + "px,0,0)" : ""; el.style.opacity = op === 1 ? "" : String(op); });
+    const paintY = (els, y, op, tr) => els.forEach(el => { el.style.transition = tr || "none"; el.style.transform = y ? "translate3d(0," + y + "px,0)" : ""; el.style.opacity = op === 1 ? "" : String(op); });
     const clear = (els) => els.forEach(el => { el.style.transition = ""; el.style.transform = ""; el.style.opacity = ""; el.style.willChange = ""; });
-    const goUp = () => { if (showMissing) goTo(cur, false); else goTo(cur.slice(0, -1)); };
+    const goUp = goBack;
     document.addEventListener("touchstart", (e) => {
       if (e.touches.length !== 1) { s = null; return; }
       const t = e.touches[0];
       if (!$("qv-bg").hidden) { s = { k: "close", x: t.clientX, y: t.clientY }; return; }
       if (anySheet() || e.target.closest("input, textarea, select")) { s = null; return; }
-      const inside = cur.length || showMissing;
-      s = inside ? { k: "up", x: t.clientX, y: t.clientY, on: false, dx: 0 } : { k: "open", x: t.clientX, y: t.clientY };
+      const inside = cur.length || showMissing || navStack.length;   // with somewhere to go back to, the swipe is «назад»
+      // inside a bag or a place, pulling the page down from the very top closes it too
+      const canDown = !!(cur.length || showMissing) && window.scrollY <= 0 && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName));
+      s = inside ? { k: "up", x: t.clientX, y: t.clientY, on: false, dx: 0, dy: 0, canDown } : { k: "open", x: t.clientX, y: t.clientY };
     }, { passive: true });
     document.addEventListener("touchmove", (e) => {
       if (!s || s.k !== "up") return;
       const t = e.touches[0], dx = t.clientX - s.x, dy = t.clientY - s.y;
       if (!s.on) {
         if (dx > 10 && Math.abs(dx) > Math.abs(dy) * 1.5) { s.on = true; s.x = t.clientX - 1; s.els = parts(); s.els.forEach(el => { el.style.willChange = "transform"; }); }
+        else if (s.canDown && dy > 10 && dy > Math.abs(dx) * 1.5 && window.scrollY <= 0) { s.on = true; s.v = true; s.y = t.clientY - 1; s.els = parts(); s.els.forEach(el => { el.style.willChange = "transform"; }); }
         else if (Math.abs(dy) > 10 || dx < -10) { s = null; return; }
         else return;
       }
-      e.preventDefault();   // no vertical scrolling while dragging sideways
+      e.preventDefault();   // no scrolling while dragging the page
+      if (s.v) {
+        s.dy = Math.max(0, t.clientY - s.y);
+        if (!raf) raf = requestAnimationFrame(() => { raf = 0; if (s && s.on) paintY(s.els, s.dy * 0.6, 1 - Math.min(0.35, s.dy / 900)); });
+        return;
+      }
       s.dx = Math.max(0, t.clientX - s.x);
       if (!raf) raf = requestAnimationFrame(() => { raf = 0; if (s && s.on) paint(s.els, s.dx, 1 - Math.min(0.35, s.dx / 900)); });
     }, { passive: false });
@@ -767,6 +791,18 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       if (st.k === "open" && dx > 80 && horiz) openQv();
       if (st.k !== "up" || !st.on) return;
       cancelAnimationFrame(raf); raf = 0;
+      if (st.v) {
+        if (dy > 130) {
+          paintY(st.els, window.innerHeight * 0.5, 0, "transform .2s cubic-bezier(.2,.7,.3,1), opacity .2s linear");
+          setTimeout(() => {
+            clear(st.els); goBack();
+            const els = parts(); paintY(els, -24, 0); void wrap.offsetWidth;
+            paintY(els, 0, 1, "transform .22s cubic-bezier(.2,.7,.3,1), opacity .22s linear");
+            setTimeout(() => clear(els), 240);
+          }, 200);
+        } else { paintY(st.els, 0, 1, "transform .2s cubic-bezier(.2,.7,.3,1), opacity .2s linear"); setTimeout(() => clear(st.els), 220); }
+        return;
+      }
       const W = window.innerWidth;
       if (dx > Math.min(110, W * 0.28)) {
         // slide out to the right, swap the level, slide the new one in from a little to the left
@@ -1029,15 +1065,20 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
         const n = matches.filter(x => x.it.in === b.id).length;
         if (q && !n && !low(b.name).includes(q)) return;
         bagsShown++;
-        const btn = document.createElement("button"); btn.type = "button"; btn.className = "chip bag";
-        btn.append(b.name + " ");
-        const c = document.createElement("span"); c.textContent = n; btn.appendChild(c);
-        const w = document.createElement("small"); w.textContent = "· " + (b.dest ? "В пути → " + b.dest : (b.location || "место не указано")); btn.appendChild(w);
-        btn.onclick = () => goTo(norm(b.location).concat(b.name));
-        bx.appendChild(btn);
+        // a row like an item: letter, name with the number of things, where the bag is
+        const row = document.createElement("button"); row.type = "button"; row.className = "item";
+        const th = document.createElement("div"); th.className = "thumb bagth"; th.textContent = (b.name || "?")[0].toUpperCase();
+        const body = document.createElement("div"); body.className = "body";
+        const nm = document.createElement("div"); nm.className = "name"; nm.textContent = b.name + " ";
+        const c = document.createElement("span"); c.className = "cnt"; c.textContent = "· " + n + " " + plural(n, ["вещь", "вещи", "вещей"]); nm.appendChild(c);
+        const tp = document.createElement("div"); tp.className = "tapes";
+        const t = document.createElement("span"); t.className = "tape"; t.textContent = b.dest ? "В пути → " + b.dest : (b.location || "место не указано"); tp.appendChild(t);
+        body.append(nm, tp); row.append(th, body);
+        row.onclick = () => goTo(norm(b.location).concat(b.name));
+        bx.appendChild(row);
       });
       if (!q) {
-        const add = document.createElement("button"); add.type = "button"; add.className = "chip link"; add.textContent = "+ сумка";
+        const add = document.createElement("button"); add.type = "button"; add.className = "addrow"; add.textContent = "+ Добавить сумку";
         add.onclick = () => openAddBag();
         bx.appendChild(add);
       }
@@ -1098,7 +1139,13 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       add.onclick = () => openAddPlace();
       ch.appendChild(add);
     }
-    $("places-h").textContent = cur.length ? "Внутри" : "Места хранения";
+    // inside a place: name the section by what is in it — «Сумка», «Сумки», «Места» or «Места и сумки»
+    let innerH = "Места хранения";
+    if (cur.length) {
+      const names = [...counts.keys()], nb = names.filter(n => bagAt(cur.concat(n))).length, np = names.length - nb;
+      innerH = nb && !np ? (nb === 1 ? "Сумка" : "Сумки") : np && !nb ? (np === 1 ? "Место" : "Места") : "Места и сумки";
+    }
+    $("places-h").textContent = innerH;
     $("places-group").hidden = !ch.children.length;
 
     // open / closed sections
@@ -1318,6 +1365,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     log.forEach((e, i) => {
       if (e.kind === "check-ok") out.push({ t: e.t, cls: "ok", text: "На месте при сверке: " + e.to });
       else if (e.kind === "check-miss") out.push({ t: e.t, cls: "miss", text: "Не нашёл при сверке: " + e.to });
+      else if (e.kind === "found") out.push({ t: e.t, cls: "ok", text: "Нашлась: " + e.to });
       else if (e.kind === "note") out.push({ t: e.t, cls: "", text: e.note ? "Заметка: " + e.note : "Заметка снята" });
       else if (e.kind === "rename") out.push({ t: e.t, cls: "", text: e.what === "place" ? "Место «" + e.from + "» переименовано в «" + e.to + "»" : e.what === "bag" ? "Сумка «" + e.from + "» переименована в «" + e.to + "»" : "Переименовал: «" + e.from + "» → «" + e.to + "»" });
       else out.push({ t: e.t, cls: "", text: "Положил " + e.to + (e.note ? " — " + e.note : "") });
@@ -1338,11 +1386,15 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const cv = it ? (it.in ? "bag:" + it.in : (it.place ? "place:" + it.place : "")) : (vb ? "bag:" + vb.id : (cur.length ? "place:" + pathStr(cur) : ""));
     fillWhere($("f-where"), $("f-new"), { bags: true, blank: true, value: cv });
     $("f-new-wrap").hidden = true;
+    const fixedBag = !it && vb;   // a new item added inside a bag goes only into that bag
+    $("f-where").closest("label").hidden = !!fixedBag;
+    if (fixedBag) $("f-title").textContent = "Новая вещь в «" + vb.name + "»";
     $("f-mnote").value = "";
     $("f-qty").value = it ? (it.qty || "") : "";
     $("f-note").value = it ? (it.note || "") : "";
     $("f-del").hidden = !it; $("f-confirm").hidden = true; $("f-err").hidden = true;
     $("f-qmove").hidden = !it || qList().length < 2;
+    $("f-found-wrap").hidden = !(it && it.missing);
     photoState = { id: it && it.photo || null, file: null, cleared: false };
     showPhoto();
     $("f-photo-wrap").hidden = !assets;
@@ -1377,6 +1429,14 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   $("f-cancel").onclick = closeSheet;
   $("sheet-bg").addEventListener("click", (e) => { if (e.target === $("sheet-bg")) closeSheet(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("sheet-bg").hidden) closeSheet(); });
+  $("f-found").onclick = async () => {
+    if (!editing) return;
+    const it = editing, t = Date.now();
+    const d = base(it); d.missing = false; d.updatedAt = t;
+    d.log = addLog(it.log, { t, kind: "found", to: labelFor(it.in ? { in: it.in } : { place: it.place }, bagMap()), in: it.in || null });
+    try { await db.collection("items").doc(it.id).set(d); closeSheet(); setStatus("Вещь «" + it.name + "» нашлась — записал в историю."); }
+    catch (e) { err("Не получилось сохранить. Попробуй ещё раз."); }
+  };
   $("f-del").onclick = () => { $("f-confirm").hidden = false; };
   $("f-confirm-no").onclick = () => { $("f-confirm").hidden = true; };
   $("f-confirm-yes").onclick = async () => {
@@ -1387,10 +1447,10 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   };
   $("form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const name = $("f-name").value.trim();
+    const name = cap($("f-name").value.trim());
     if (!name) { err("Напиши, что это за вещь."); $("f-name").focus(); return; }
-    // several new items at once: "маска, баф, варежки"
-    const names = editing ? [name] : name.split(",").map(x => x.replace(/\s+/g, " ").trim()).filter(Boolean);
+    // several new items at once: "маска, баф, варежки" → «Маска», «Баф», «Варежки»
+    const names = editing ? [name] : name.split(",").map(x => cap(x.replace(/\s+/g, " ").trim())).filter(Boolean);
     if (!names.length) { err("Напиши, что это за вещь."); $("f-name").focus(); return; }
     if (names.length > 1 && photoState.file) { err("Фото можно прикрепить только к одной вещи. Убери фото или добавь вещи по одной."); return; }
     const where = readWhere($("f-where"), $("f-new"));
@@ -1479,11 +1539,13 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     $("mv-items-title").textContent = "Выбрать вещи в «" + bag.name + "»";
     $("mv-sub").textContent = "Отметь вещи — они лягут в сумку. Можно найти поиском или добавить новую.";
     $("mv-to").value = "bag:" + bag.id;
+    $("mv-to-wrap").hidden = true; $("mv-new-wrap").hidden = true;   // only into this bag
     $("mv-go").textContent = "Положить";
     renderPick();
   }
   function openItemPick(kind, bag) {
     mvMode = kind; mvBag = bag; mvSel = new Set(); mvInto = null;
+    $("mv-to-wrap").hidden = false;
     $("mv-q").value = ""; $("mv-note").value = ""; $("mv-err").hidden = true;
     if (kind === "edit") {
       items.filter(it => it.in === bag.id).forEach(it => mvSel.add(it.id));
@@ -1577,15 +1639,16 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     // create new items right from the search
     const raw = $("mv-q").value.trim();
     if (raw && mvMode !== "recv") {
-      const names = raw.split(",").map(x => x.replace(/\s+/g, " ").trim()).filter(Boolean);
+      const names = raw.split(",").map(x => cap(x.replace(/\s+/g, " ").trim())).filter(Boolean);
       const exists = names.every(nm => items.some(it => low(it.name) === low(nm)));
       if (!exists) {
         const box = document.createElement("div"); box.className = "mv-add";
         const ab = document.createElement("button"); ab.type = "button"; ab.className = "primary";
-        ab.textContent = "+ Добавить «" + names.join(", ") + "»" + (mvBag ? " в «" + mvBag.name + "»" : "");
+        const into = mvBag || mvInto;
+        ab.textContent = "+ Добавить «" + names.join(", ") + "»" + (into ? " в «" + into.name + "»" : "");
         ab.onclick = () => mvCreate(names);
         box.appendChild(ab);
-        if (!mvBag) { const h = document.createElement("div"); h.className = "note"; h.textContent = "Новая вещь сразу будет отмечена, место выберешь внизу в «Куда»."; box.appendChild(h); }
+        if (!into) { const h = document.createElement("div"); h.className = "note"; h.textContent = "Новая вещь сразу будет отмечена, место выберешь внизу в «Куда»."; box.appendChild(h); }
         list.appendChild(box);
       }
     }
@@ -1600,11 +1663,14 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       for (const nm of names) {
         const id = "i" + (t + i).toString(36) + Math.random().toString(36).slice(2, 6);
         const d = { name: nm, place: "", parts: [], in: null, qty: "", note: "", photo: null, missing: false, updatedAt: t + i, log: [] };
-        if (mvBag) { d.in = mvBag.id; d.log = [{ t: t + i, kind: "move", to: "в «" + mvBag.name + "» (" + (mvBag.location || "?") + ")", in: mvBag.id }]; }
+        const into = mvBag || mvInto;
+        if (into) { d.in = into.id; d.log = [{ t: t + i, kind: "move", to: "в «" + into.name + "» (" + (into.location || "?") + ")", in: into.id }]; }
         await db.collection("items").doc(id).set(d);
         mvSel.add(id); i++;
       }
-      $("mv-q").value = ""; renderPick();
+      $("mv-q").value = "";
+      if (mvInto) $("mv-sub").textContent = "Добавлено в «" + mvInto.name + "»: " + names.join(", ") + ".";
+      renderPick();
       setTimeout(renderPick, 300);
     } catch (e) { const er = $("mv-err"); er.textContent = "Не получилось добавить вещь. Попробуй ещё раз."; er.hidden = false; }
   }
@@ -1694,6 +1760,18 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     b.addEventListener("click", () => { inp.value = ""; inp.dispatchEvent(new Event("input", { bubbles: true })); inp.focus(); });
     wrap.appendChild(b);
   });
+  // ---------- keyboard: a swipe down anywhere hides it, like in iPhone apps ----------
+  (function () {
+    let k = null;
+    const typing = () => { const a = document.activeElement; return a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA") && !/^(checkbox|radio|file|button|submit)$/i.test(a.type || ""); };
+    document.addEventListener("touchstart", (e) => { k = e.touches.length === 1 && typing() ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true, capture: true });
+    document.addEventListener("touchmove", (e) => {
+      if (!k) return;
+      const t = e.touches[0], dx = t.clientX - k.x, dy = t.clientY - k.y;
+      if (dy > 36 && dy > Math.abs(dx) * 1.5) { k = null; if (typing()) document.activeElement.blur(); }
+      else if (dy < -24 || Math.abs(dx) > 40) k = null;
+    }, { passive: true, capture: true });
+  })();
   // ---------- gestures on pop-up windows: swipe from the left edge = back, swipe down from the header = close ----------
   function sheetClose(sh) {
     const bg = sh.closest(".sheet-bg"); if (!bg) return;
@@ -1721,9 +1799,10 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const headBottom = h2 ? h2.getBoundingClientRect().bottom + 10 : sh.getBoundingClientRect().top + 64;
     let kind = null;
     const scroller = e.target.closest(".mv-list") || sh;
+    const kb = document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);   // keyboard open: a swipe down only hides it
     if (tch.clientX < 40) kind = "back";
-    else if (tch.clientY <= headBottom && !e.target.closest("input, select, textarea, button")) kind = "down";
-    else if (!e.target.closest("input, select, textarea") && scroller.scrollTop <= 0 && (scroller === sh || sh.scrollTop <= 0)) kind = "pull";
+    else if (!kb && tch.clientY <= headBottom && !e.target.closest("input, select, textarea, button")) kind = "down";
+    else if (!kb && !e.target.closest("input, select, textarea") && scroller.scrollTop <= 0 && (scroller === sh || sh.scrollTop <= 0)) kind = "pull";
     g = kind ? { sh, kind, x: tch.clientX, y: tch.clientY, t0: Date.now(), dx: 0, dy: 0, on: false } : null;
   }, { passive: true });
   document.addEventListener("touchmove", (e) => {
@@ -1764,7 +1843,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   document.addEventListener("touchcancel", gEnd);
 
   $("home-btn").onclick = () => {
-    $("q").value = ""; cur = []; showMissing = false; over = {}; levelMem = {};
+    $("q").value = ""; cur = []; showMissing = false; over = {}; levelMem = {}; navStack = [];
     endMode(); mvClose(); addView(null);
     if (!$("sheet-bg").hidden) closeSheet();
     const dbg = document.getElementById("data-bg"); if (dbg) dbg.hidden = true;
@@ -1792,7 +1871,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     $("ab-new-wrap").hidden = true;
     addView("bag"); setTimeout(() => $("ab-name").focus(), 50);
   }
-  $("add").onclick = () => openChooser("");
+  $("add").onclick = () => { if (bagAt(cur)) { addPrefill = ""; openSheet(null); } else openChooser(""); };
   $("add-item").onclick = () => { addView(null); openSheet(null); if (addPrefill) $("f-name").value = addPrefill; };
   $("add-bag").onclick = openAddBag;
   $("add-place").onclick = openAddPlace;
@@ -1800,7 +1879,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   $("add-bg").addEventListener("click", (e) => { if (e.target === $("add-bg")) addView(null); });
   $("add-place-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const name = $("ap-name").value.replace(/\//g, " ").replace(/\s+/g, " ").trim();
+    const name = cap($("ap-name").value.replace(/\//g, " ").replace(/\s+/g, " ").trim());
     const er = $("ap-err");
     if (!name) { er.textContent = "Напиши название места."; er.hidden = false; return; }
     if (places.some(p => low(p.name) === low(name))) { er.textContent = "Такое место уже есть."; er.hidden = false; return; }
@@ -1810,7 +1889,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   });
   $("add-bag-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const name = $("ab-name").value.replace(/\//g, " ").replace(/\s+/g, " ").trim();
+    const name = cap($("ab-name").value.replace(/\//g, " ").replace(/\s+/g, " ").trim());
     const er = $("ab-err");
     if (!name) { er.textContent = "Напиши название сумки."; er.hidden = false; return; }
     if (bags.some(b => low(b.name) === low(name))) { er.textContent = "Сумка с таким названием уже есть."; er.hidden = false; return; }

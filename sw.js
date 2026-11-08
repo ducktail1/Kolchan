@@ -1,5 +1,5 @@
 // Offline cache for the app shell. Bump VERSION when files change.
-const VERSION = "1.7.0";
+const VERSION = "1.7.1";
 const FILES = ["./", "index.html", "local.js", "friends.js", "cloud.js", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -19,7 +19,7 @@ self.addEventListener("fetch", (e) => {
   if (req.url.endsWith("seed.json")) return;
   if (new URL(req.url).pathname.includes("/beta/")) return;   // the beta app has its own worker
   e.respondWith(
-    fetch(req)
+    fetch(req, { cache: "no-cache" })   // ask the server every time (GitHub Pages lets browsers keep files for 10 min)
       .then((res) => {
         const copy = res.clone();
         caches.open(VERSION).then((c) => c.put(req, copy));

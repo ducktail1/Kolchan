@@ -16,7 +16,7 @@ const LOG_MAX = 80;
 const DATA = ["places", "bags", "items", "quivers"];
 const MAINQ = "main", MAIN_NAME = "Основной";
 const QOF = (r) => (r && r.q) || MAINQ;
-export const BOT_VERSION = "1.3.1";
+export const BOT_VERSION = "1.3.2";
 
 // ---------- helpers ----------
 const low = (s) => (s || "").toLowerCase().replace(/ё/g, "е");
@@ -237,6 +237,7 @@ function logLine(e) {
   if (e.kind === "check-ok") what = "✔ на месте";
   else if (e.kind === "check-miss") what = "⚠ не нашлась";
   else if (e.kind === "found") what = "✔ нашлась: " + (e.to || "");
+  else if (e.kind === "trip") what = "🧳 скопирована в поездку «" + (e.to || "") + "»";
   else if (e.kind === "note") what = "📝";
   else if (e.kind === "rename") return fmtDate(e.t || 0) + " — ✎ " + esc(e.what === "place" ? "место «" + e.from + "» → «" + e.to + "»" : e.what === "bag" ? "сумка «" + e.from + "» → «" + e.to + "»" : "«" + e.from + "» → «" + e.to + "»");
   else what = "→ " + (e.to || "");

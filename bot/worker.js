@@ -16,7 +16,7 @@ const LOG_MAX = 80;
 const DATA = ["places", "bags", "items", "quivers"];
 const MAINQ = "main", MAIN_NAME = "Основной";
 const QOF = (r) => (r && r.q) || MAINQ;
-export const BOT_VERSION = "1.3.3";
+export const BOT_VERSION = "1.3.4";
 
 // ---------- helpers ----------
 const low = (s) => (s || "").toLowerCase().replace(/ё/g, "е");
@@ -622,8 +622,9 @@ async function handleLogin(env, u) {
         await send(env, cq.message.chat.id, { text: "✅ Почти готово. Теперь нажми «📱 Поделиться номером» внизу — так Telegram подтвердит, что номер твой.", kb: null, edit: true }, cq.message.message_id);
         await tg(env, "sendMessage", { chat_id: cq.message.chat.id, text: "Кнопка внизу 👇", reply_markup: { keyboard: [[{ text: "📱 Поделиться номером", request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } });
       } else {
-        const back = app && ORIGIN ? kbd([[{ text: "📦 Открыть Колчан", url: ORIGIN + "/open" }]]) : null;
-        await send(env, cq.message.chat.id, Object.assign({ text: "✅ Готово! Вернись в Колчан — вход выполнится сам." }, back ? { kb: back } : {}), cq.message.message_id);
+        // from the iPhone app: iOS shows «◀ Колчан» in the top-left corner — one tap back (a link button can't
+        // open the app: workers.dev is not reachable from Russian networks, and Telegram asks twice anyway)
+        await send(env, cq.message.chat.id, { text: app ? "✅ Готово! Нажми <b>«◀ Колчан»</b> вверху слева — вход выполнится сам." : "✅ Готово! Вернись в Колчан — вход выполнится сам." }, cq.message.message_id);
       }
     } catch (e) { await send(env, cq.message.chat.id, { text: "⚠ Не получилось: " + esc(e.message) + ". Начни вход в приложении заново." }, cq.message.message_id); }
     return true;

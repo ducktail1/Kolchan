@@ -270,7 +270,8 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
       const acc = window.__kolchanAccount && window.__kolchanAccount();
       const warn = ["acc-open", "data-open"].some(warnIn);
       ava.classList.toggle("on", !!acc);
-      ava.innerHTML = (acc ? '<span>' + ((acc.email || "?")[0] || "?").toUpperCase() + "</span>" : person) + (warn ? '<span class="dot"></span>' : "");
+      ava.innerHTML = (acc ? "<span></span>" : person) + (warn ? '<span class="dot"></span>' : "");
+      if (acc) ava.firstChild.textContent = ((acc.email || "?")[0] || "?").toUpperCase();
     }
     function closeMenu() { if (menu) { menu.remove(); menu = null; ava.setAttribute("aria-expanded", "false"); } }
     function openMenu() {

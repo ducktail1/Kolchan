@@ -1,8 +1,13 @@
-// Собирает www/ для приложения из готового Колчана в корне репозитория (тот же, что на сайте).
+// Собирает www/ для приложения из исходников Колчана (src/).
 // В приложении: считаемся «установленными» (без плашки «экран Домой»), без входа через Google
 // (Google не пускает вход из встроенного браузера приложения — сделаем позже отдельно).
 import { mkdirSync, copyFileSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
-const root = new URL("../", import.meta.url), out = new URL("./www/", import.meta.url);
+import { execFileSync } from "node:child_process";
+// собираем из исходников src/ (свежее, чем выкаченный сайт): python3 есть на Маке вместе с git
+const src = new URL("../src/", import.meta.url).pathname, ver = "app-" + new Date().toISOString().slice(0, 10);
+execFileSync("python3", [src + "kolchan-src/build.py", src, ver], { stdio: "ignore" });
+execFileSync("python3", [src + "kolchan-src/build_main.py", src, ver, "https://jtmujxxpcqjddauitrio.supabase.co", "sb_publishable_PrBfsQIYFTYLzoqWso1CHA_ED-qe00L", "email,telegram"], { stdio: "ignore" });
+const root = new URL("../src/kolchan/", import.meta.url), out = new URL("./www/", import.meta.url);
 rmSync(out, { recursive: true, force: true }); mkdirSync(out, { recursive: true });
 for (const f of ["local.js", "friends.js", "cloud.js", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"])
   if (existsSync(new URL(f, root))) copyFileSync(new URL(f, root), new URL(f, out));

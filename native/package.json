@@ -4,8 +4,8 @@
   "description": "Колчан для iPhone и Android: обёртка Capacitor вокруг собранного Колчана из корня репозитория",
   "scripts": {
     "www": "node www.mjs",
-    "setup": "node www.mjs && npx cap add ios && node icon.mjs && npx cap sync ios",
-    "ios": "node www.mjs && npx cap sync ios && npx cap open ios"
+    "setup": "node www.mjs && npx cap add ios && node icon.mjs && node scheme.mjs && npx cap sync ios",
+    "ios": "node www.mjs && node scheme.mjs && npx cap sync ios && npx cap open ios"
   },
   "dependencies": {
     "@capacitor/core": "latest",

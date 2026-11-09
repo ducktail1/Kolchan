@@ -1,0 +1,10 @@
+{
+  "appId": "io.github.ducktail1.kolchan",
+  "appName": "Колчан",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#121514",
+    "scheme": "Kolchan"
+  }
+}

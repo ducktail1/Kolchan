@@ -58,12 +58,12 @@
     await saveSession(null);
   }
   // OAuth providers (Google и др.) come back with tokens in the address: #access_token=…&refresh_token=…
-  async function takeRedirect() {
-    const h = new URLSearchParams(location.hash.slice(1));
+  async function takeRedirect(hash) {
+    const h = new URLSearchParams((hash != null ? hash : location.hash).replace(/^#/, ""));
     if (h.get("error_description")) { history.replaceState(null, "", location.pathname); return "Вход не удался: " + h.get("error_description"); }
     if (!h.get("access_token")) return null;
     const at = h.get("access_token"), rt = h.get("refresh_token"), exp = +h.get("expires_at") || 0;
-    history.replaceState(null, "", location.pathname);
+    if (hash == null) history.replaceState(null, "", location.pathname);
     const u = await api("/auth/v1/user", { headers: Object.assign(authHeaders(), { Authorization: "Bearer " + at }) });
     await saveSession({ access_token: at, refresh_token: rt, expires_at: exp ? exp * 1000 : Date.now() + 3600000, user: { id: u.id, email: u.email || "", meta: metaOf(u) } });
     return "ok";
@@ -72,7 +72,10 @@
     await api("/auth/v1/resend?redirect_to=" + encodeURIComponent(location.origin + location.pathname), { method: "POST", headers: authHeaders(), body: JSON.stringify({ type: "signup", email }) });
   }
   // Google always shows the account chooser (otherwise it silently reuses the last account)
-  const oauthUrl = (provider) => CFG.url + "/auth/v1/authorize?provider=" + provider + "&redirect_to=" + encodeURIComponent(location.origin + location.pathname) + (provider === "google" ? "&prompt=select_account" : "");
+  // in the iPhone app the sign-in page opens in the system browser and comes back by kolchan://auth
+  const CAP = () => (window.__KOLCHAN_NATIVE && window.Capacitor && window.Capacitor.Plugins) || null;
+  const backTo = () => CAP() ? "kolchan://auth" : location.origin + location.pathname;
+  const oauthUrl = (provider) => CFG.url + "/auth/v1/authorize?provider=" + provider + "&redirect_to=" + encodeURIComponent(backTo()) + (provider === "google" ? "&prompt=select_account" : "");
 
   // ---------- data: one table "records" (user_id, coll, id, data, deleted, updated_at) ----------
   async function rest(path, opt) {
@@ -512,7 +515,15 @@
     sh.querySelectorAll("[data-p]").forEach(b => b.onclick = () => {
       if (b.disabled) return;
       if (b.dataset.p === "telegram" || b.dataset.p === "phone") tgStart(b.dataset.p === "phone" ? "phone" : "tg", false);
+      else if (CAP() && CAP().Browser) CAP().Browser.open({ url: oauthUrl(b.dataset.p), presentationStyle: "popover" });
       else location.href = oauthUrl(b.dataset.p);
+    });
+    if (CAP() && CAP().App) CAP().App.addListener("appUrlOpen", async (e) => {
+      const u = String((e && e.url) || "");
+      if (!u.startsWith("kolchan://auth")) return;
+      try { CAP().Browser && CAP().Browser.close(); } catch (x) {}
+      const i = u.indexOf("#") >= 0 ? u.indexOf("#") : u.indexOf("?");
+      try { const r = await takeRedirect(i >= 0 ? u.slice(i + 1) : ""); if (r === "ok") { open(); syncNow(true); } else if (r) { open(); err(r); } } catch (x) { open(); err(ruErr(x)); }
     });
     $("acc-link-tg").onclick = () => tgStart("tg", true);
     if ($("acc-local-go")) $("acc-local-go").onclick = async () => { localOk = true; await K.put("meta", { key: "localMode", on: true }); sh.hidden = true; paint(); };

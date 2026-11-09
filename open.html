@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Колчан</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #121514; color: #e9ece9; font: 16px -apple-system, system-ui, sans-serif; text-align: center; padding: 16px; box-sizing: border-box; }
+  a { display: inline-block; margin-top: 18px; padding: 14px 24px; border-radius: 14px; background: #7fc4a6; color: #0f1a14; font-weight: 700; text-decoration: none; }
+  p { color: #9aa39e; font-size: 14px; margin: 14px 0 0; }
+</style>
+</head>
+<body>
+  <div>
+    <img src="icon-180.png" width="72" height="72" alt="" style="border-radius:16px">
+    <div style="margin-top:12px">Возвращаемся в Колчан…</div>
+    <a href="kolchan://login" id="go">Открыть Колчан</a>
+    <p>Приложения Колчан нет на этом телефоне? <a href="./" style="all:unset;color:#7fc4a6;text-decoration:underline">Открыть сайт</a></p>
+  </div>
+  <script>location.replace("kolchan://login");</script>
+</body>
+</html>

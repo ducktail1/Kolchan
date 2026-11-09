@@ -16,7 +16,7 @@ const LOG_MAX = 80;
 const DATA = ["places", "bags", "items", "quivers"];
 const MAINQ = "main", MAIN_NAME = "Основной";
 const QOF = (r) => (r && r.q) || MAINQ;
-export const BOT_VERSION = "1.3.2";
+export const BOT_VERSION = "1.3.4";
 
 // ---------- helpers ----------
 const low = (s) => (s || "").toLowerCase().replace(/ё/g, "е");
@@ -599,21 +599,22 @@ async function loginCall(env, body) {
   if (!r.ok) throw new Error(j.error || "login " + r.status);
   return j;
 }
-const LOGIN_START = /^\/start\s+login_([A-Za-z0-9-]{16,40})(_p)?$/;
+const LOGIN_START = /^\/start\s+login_([A-Za-z0-9-]{16,40})(_p)?(_a)?$/;
+let ORIGIN = "";   // this worker's address — for the «Открыть Колчан» page
 async function handleLogin(env, u) {
   const m = u.message, cq = u.callback_query;
   const isOwner = (id) => env.OWNER_ID && String(id) === String(env.OWNER_ID);
   if (m && LOGIN_START.test((m.text || "").trim())) {
-    const [, code, p] = (m.text || "").trim().match(LOGIN_START);
+    const [, code, p, a] = (m.text || "").trim().match(LOGIN_START);
     if (!env.LOGIN_URL || !env.LOGIN_SECRET) { await send(env, m.chat.id, { text: "Вход через Telegram ещё не настроен." }); return true; }
     await send(env, m.chat.id, {
       text: "🔐 <b>Вход в Колчан</b>" + (p ? " по номеру телефона" : "") + "\n\nНажми кнопку, если это ты сейчас входишь в приложение. Если ссылку прислал кто-то другой — ничего не нажимай.",
-      kb: kbd([[{ text: "✅ Войти в Колчан", callback_data: "lg:" + code + ":" + (p ? "p" : "t") }]]),
+      kb: kbd([[{ text: "✅ Войти в Колчан", callback_data: "lg:" + code + ":" + (p ? "p" : "t") + (a ? ":a" : "") }]]),
     });
     return true;
   }
   if (cq && /^lg:/.test(cq.data || "")) {
-    const [, code, mode] = cq.data.split(":");
+    const [, code, mode, app] = cq.data.split(":");
     await tg(env, "answerCallbackQuery", { callback_query_id: cq.id });
     try {
       await loginCall(env, { action: "confirm", code, mode: mode === "p" ? "phone" : "tg", tg: cq.from });
@@ -621,7 +622,10 @@ async function handleLogin(env, u) {
         await send(env, cq.message.chat.id, { text: "✅ Почти готово. Теперь нажми «📱 Поделиться номером» внизу — так Telegram подтвердит, что номер твой.", kb: null, edit: true }, cq.message.message_id);
         await tg(env, "sendMessage", { chat_id: cq.message.chat.id, text: "Кнопка внизу 👇", reply_markup: { keyboard: [[{ text: "📱 Поделиться номером", request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } });
       } else {
-        await send(env, cq.message.chat.id, { text: "✅ Готово! Вернись в Колчан — вход выполнится сам." }, cq.message.message_id);
+        // from the iPhone app: a button to a page on GitHub Pages (reachable from Russia, unlike workers.dev),
+        // the page jumps to kolchan://login; «◀ Колчан» in the top-left corner works too
+        const back = app ? kbd([[{ text: "📦 Открыть Колчан", url: env.OPEN_URL || "https://ducktail1.github.io/Kolchan/open.html" }]]) : null;
+        await send(env, cq.message.chat.id, Object.assign({ text: "✅ Готово! Вернись в Колчан — вход выполнится сам." }, back ? { kb: back } : {}), cq.message.message_id);
       }
     } catch (e) { await send(env, cq.message.chat.id, { text: "⚠ Не получилось: " + esc(e.message) + ". Начни вход в приложении заново." }, cq.message.message_id); }
     return true;
@@ -667,6 +671,15 @@ async function handleUpdate(env, u) {
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+    ORIGIN = url.origin;
+    // «Открыть Колчан» from the bot: Telegram buttons can't open kolchan:// directly, this page does
+    if (url.pathname === "/open") {
+      const html = '<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Колчан</title>'
+        + '<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#121514;color:#e9ece9;font:16px -apple-system,system-ui,sans-serif;text-align:center}a{display:inline-block;margin-top:16px;padding:14px 22px;border-radius:14px;background:#7fc4a6;color:#0f1a14;font-weight:700;text-decoration:none}</style></head>'
+        + '<body><div><div style="font-size:40px">📦</div><div>Возвращаемся в Колчан…</div><a href="kolchan://login">Открыть Колчан</a></div>'
+        + '<script>location.href="kolchan://login"</script></body></html>';
+      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    }
     if (url.pathname === "/setup") {
       if (!env.HOOK_SECRET || url.searchParams.get("key") !== env.HOOK_SECRET) return new Response("Неверный key", { status: 403 });
       const hook = await tg(env, "setWebhook", { url: url.origin + "/tg", secret_token: env.HOOK_SECRET, allowed_updates: ["message", "callback_query"], drop_pending_updates: true });

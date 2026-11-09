@@ -294,11 +294,12 @@
   const FN = () => CFG.url + "/functions/v1/tg-auth";
   let tgPend = null, tgTimer = null;
   const randCode = () => { const a = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", r = new Uint8Array(32); crypto.getRandomValues(r); return [...r].map(x => a[x % a.length]).join(""); };
-  const tgLink = (p) => "https://t.me/" + (CFG.tgBot || "") + "?start=login_" + p.code + (p.mode === "phone" ? "_p" : "");
+  const tgTail = (p) => (p.mode === "phone" ? "_p" : "") + (window.__KOLCHAN_NATIVE ? "_a" : "");   // _a: from the iPhone app → the bot gives a button back
+  const tgLink = (p) => "https://t.me/" + (CFG.tgBot || "") + "?start=login_" + p.code + tgTail(p);
   // on a phone go straight into the Telegram app (tg://): a t.me link from the installed app opens an
   // in-app browser that stays white after the hand-off and has to be closed with «Готово»
   const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const tgApp = (p) => "tg://resolve?domain=" + (CFG.tgBot || "") + "&start=login_" + p.code + (p.mode === "phone" ? "_p" : "");
+  const tgApp = (p) => "tg://resolve?domain=" + (CFG.tgBot || "") + "&start=login_" + p.code + tgTail(p);
   function openTg(p) {
     if (!mobile) { const w = window.open(tgLink(p), "_blank"); if (!w) location.href = tgLink(p); return; }
     location.href = tgApp(p);   // no Telegram app → the wait window has a web link

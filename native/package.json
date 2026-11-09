@@ -12,7 +12,8 @@
     "@capacitor/ios": "latest",
     "@capacitor/app": "latest",
     "@capacitor/browser": "latest",
-    "@capacitor/haptics": "latest"
+    "@capacitor/haptics": "latest",
+    "@capacitor/preferences": "latest"
   },
   "devDependencies": {
     "@capacitor/cli": "latest"

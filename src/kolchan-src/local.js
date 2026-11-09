@@ -182,6 +182,16 @@
   function mergeRec(l, r) {
     const out = Object.assign({}, stamp(l) >= stamp(r) ? l : r);
     if (l.log || r.log) out.log = mergeLog(l.log, r.log);
+    // trip expenses: two people can add or edit at the same time — keep both; deleted ones stay deleted
+    if (l.exp || r.exp || l.expDel || r.expDel) {
+      const del = [...new Set([...(l.expDel || []), ...(r.expDel || [])])].slice(-500), D = new Set(del), m = new Map();
+      [...(l.exp || []), ...(r.exp || [])].forEach(e => {
+        if (!e || !e.id || D.has(e.id)) return;
+        const o = m.get(e.id); if (!o || (e.u || e.t || 0) > (o.u || o.t || 0)) m.set(e.id, e);
+      });
+      out.exp = [...m.values()].sort((a, b) => (a.t || 0) - (b.t || 0));
+      if (del.length) out.expDel = del; else delete out.expDel;
+    }
     return out;
   }
   // three-way merge: base = ids that existed at the last successful sync (to tell "deleted" from "new")

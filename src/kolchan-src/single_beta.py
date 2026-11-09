@@ -40,6 +40,37 @@ mock = r'''<script>
       if (!opt || !opt.method || opt.method === "GET") return J([...rows.values()]);
       body.forEach(r => rows.set(r.coll + "|" + r.id, { coll: r.coll, id: r.id, data: r.data, deleted: r.deleted })); return new Response(null, { status: 201 });
     }
+    // shared trips: the example trip already has two friends on the server
+    const TR = window.__mockTrips = window.__mockTrips || { trips: [{ id: "tdemo1", owner: "u1", invite: "demo00000000000000000" }], members: null, recs: new Map() };
+    if (!TR.members) {
+      const a = window.__kolchanAccount && window.__kolchanAccount(), me = a && a.email ? String(a.email).split("@")[0] : "Я";
+      TR.members = [{ trip_id: "tdemo1", user_id: "u1", name: me, joined_at: 1 }, { trip_id: "tdemo1", user_id: "u2", name: "Митяй", joined_at: 2 }, { trip_id: "tdemo1", user_id: "u3", name: "Костя", joined_at: 3 }];
+    }
+    const eq = (k) => { const v = u.searchParams.get(k); return v && v.startsWith("eq.") ? v.slice(3) : null; };
+    const M = (opt && opt.method) || "GET", tok = () => Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12);
+    const owns = (t) => TR.trips.some(x => x.id === t && x.owner === "u1");
+    const inTrip = (t) => TR.members.some(m => m.trip_id === t && m.user_id === "u1");
+    if (p === "/rest/v1/trip_members") {
+      if (M === "GET") return J(TR.members.filter(m => inTrip(m.trip_id)));
+      if (M === "POST") { TR.members.push({ trip_id: body.trip_id, user_id: "u1", name: body.name, joined_at: Date.now() }); return new Response(null, { status: 201 }); }
+      if (M === "DELETE") { TR.members = TR.members.filter(m => !(m.trip_id === eq("trip_id") && m.user_id === eq("user_id"))); return new Response(null, { status: 204 }); }
+    }
+    if (p === "/rest/v1/trips") {
+      if (M === "GET") return J(TR.trips.filter(t => (!eq("id") || t.id === eq("id")) && (t.owner === "u1" || inTrip(t.id))).map(t => ({ id: t.id, owner: t.owner, invite: t.invite })));
+      if (M === "POST") { TR.trips.push({ id: body.id, owner: "u1", invite: body.invite }); return new Response(null, { status: 201 }); }
+      if (M === "DELETE") { const t = eq("id"); TR.trips = TR.trips.filter(x => x.id !== t); TR.members = TR.members.filter(m => m.trip_id !== t); return new Response(null, { status: 204 }); }
+    }
+    if (p === "/rest/v1/trip_records") {
+      if (M === "GET") { const t = eq("trip_id"); return J([...TR.recs.values()].filter(r => r.trip_id === t)); }
+      body.forEach(r => TR.recs.set(r.trip_id + "|" + r.coll + "|" + r.id, r)); return new Response(null, { status: 201 });
+    }
+    if (p === "/rest/v1/rpc/trip_new_invite") { const t = TR.trips.find(x => x.id === body.p_trip && x.owner === "u1"); if (!t) return J(null); t.invite = tok(); return J(t.invite); }
+    if (p === "/rest/v1/rpc/trip_kick") {
+      if (!owns(body.p_trip) || body.p_user === "u1") return J(false);
+      TR.members = TR.members.filter(m => !(m.trip_id === body.p_trip && m.user_id === body.p_user));
+      TR.trips.find(x => x.id === body.p_trip).invite = tok(); return J(true);
+    }
+    if (p === "/rest/v1/rpc/join_trip") { const t = TR.trips.find(x => x.id === body.p_trip && x.invite === body.p_invite); if (!t) return J(false); TR.members.push({ trip_id: t.id, user_id: "u1", name: body.p_name, joined_at: Date.now() }); return J(true); }
     return J({}, 404);
   };
 })();
@@ -50,5 +81,9 @@ pre = ('<title>' + TITLE + '</title>\n<script>window.__KOLCHAN_PREVIEW = true; w
 # the pretend server must be in place before cloud.js runs: put it right after the __CLOUD config
 h = h.replace('<script>\n// Колчан: аккаунт', mock + '<script>\n// Колчан: аккаунт', 1)
 assert 'pretend Supabase' in h
+# preview: already signed in as Алексей (the login screen is tested; it only gets in the way)
+old = 'const s = await K.get("meta", "cloudSession");'
+assert h.count(old) == 1
+h = h.replace(old, 'let s = await K.get("meta", "cloudSession"); if (!(s && (s.access_token || s.none))) { s = { access_token: "AT", refresh_token: "RT", expires_at: Date.now() + 86400000, user: { id: "u1", email: "tg1@tg.kolchan.app", meta: { name: "Алексей", tg_id: 1, tg_username: "ducktail10" } } }; await K.put("meta", Object.assign({ key: "cloudSession" }, s)); }')
 open(out, "w", encoding="utf-8").write(pre + h)
 print("ok", len(pre + h))

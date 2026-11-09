@@ -134,7 +134,8 @@
           remoteTrip[c].forEach(r => rows.push({ user_id: uid, coll: c, id: r.id, data: {}, deleted: true }));
         });
         if (rows.length) await upsert(rows);
-        const tripData = trips ? await syncTrips(tripIds, trips, localTrip) : localTrip;
+        const myIds = new Set(DATA.flatMap(c => merged[c].map(r => c + ":" + r.id)));
+        const tripData = trips ? await syncTrips(tripIds, trips, localTrip, myIds) : localTrip;
         const all = Object.fromEntries(DATA.map(c => [c, merged[c].concat(tripData[c] || [])]));
         if (!S.sameData(all, localAll)) { await K.replaceData(all); await Promise.all(DATA.map(K.emit)); }
         else if (trips) await K.emit("quivers");   // members may have changed
@@ -151,15 +152,21 @@
     try { await running; } finally { running = null; }
   }
   // ---------- shared trips: table trip_records, members in trip_members ----------
-  let tripMembers = {};   // trip id → [names]
+  let tripMembers = {}, tripPeople = {}, tripOwner = {};   // trip id → [names], [{id, name}], owner id
   window.__kolchanTripMembers = (t) => tripMembers[t] || [];
+  window.__kolchanTripInfo = (t) => session ? { me: session.user.id, owner: tripOwner[t] || null, members: tripPeople[t] || [] } : null;
   const myName = () => { const n = session ? shownName(session.user) : ""; return n.includes("@") ? n.split("@")[0] : n || "Я"; };
   async function tripList() {
     try {
-      const rows = await rest("trip_members?select=trip_id,user_id,name");
-      const mine = new Set(), names = {};
-      (rows || []).forEach(r => { if (r.user_id === session.user.id) mine.add(r.trip_id); (names[r.trip_id] = names[r.trip_id] || []).push(r.name || "?"); });
-      tripMembers = names;
+      const rows = await rest("trip_members?select=trip_id,user_id,name&order=joined_at");
+      const mine = new Set(), names = {}, people = {};
+      (rows || []).forEach(r => {
+        if (r.user_id === session.user.id) mine.add(r.trip_id);
+        (names[r.trip_id] = names[r.trip_id] || []).push(r.name || "?");
+        (people[r.trip_id] = people[r.trip_id] || []).push({ id: r.user_id, name: r.name || "?" });
+      });
+      tripMembers = names; tripPeople = people;
+      const own = {}; (await rest("trips?select=id,owner") || []).forEach(r => { own[r.id] = r.owner; }); tripOwner = own;
       return { mine };
     } catch (e) {
       if (e.status === 404 || /trip_members|schema cache|does not exist/i.test(e.message || "")) return null;   // SQL for trips not run yet
@@ -178,7 +185,7 @@
     return [mine, trip];
   }
   const randTok = (n) => { const a = new Uint8Array(n); crypto.getRandomValues(a); return Array.from(a, x => "abcdefghijkmnopqrstuvwxyz23456789"[x % 33]).join(""); };
-  async function syncTrips(ids, trips, localTrip) {
+  async function syncTrips(ids, trips, localTrip, myIds) {
     const out = Object.fromEntries(DATA.map(c => [c, []]));
     for (const t of ids) {
       const mineL = Object.fromEntries(DATA.map(c => [c, localTrip[c].filter(r => c === "quivers" ? r.id === t : r.q === t)]));
@@ -189,7 +196,7 @@
         // a trip made on this phone goes to the server: I am its owner and first member
         await rest("trips", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ id: t, invite: randTok(20) }) });
         await rest("trip_members", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ trip_id: t, name: myName() }) });
-        tripMembers[t] = [myName()];
+        tripMembers[t] = [myName()]; tripPeople[t] = [{ id: session.user.id, name: myName() }]; tripOwner[t] = session.user.id;
       }
       const rows = [];
       for (let from = 0; ; from += 1000) {
@@ -197,7 +204,12 @@
         rows.push(...(part || [])); if (!part || part.length < 1000) break;
       }
       const remote = Object.fromEntries(DATA.map(c => [c, []]));
-      rows.forEach(r => { if (remote[r.coll] && !r.deleted) remote[r.coll].push(Object.assign({}, r.data, { id: r.id })); });
+      // only what belongs to this trip: its own quiver and records marked with it; never my personal records
+      rows.forEach(r => {
+        if (!remote[r.coll] || r.deleted || !r.data || typeof r.data !== "object") return;
+        if (r.coll === "quivers" ? r.id !== t || r.data.kind !== "trip" : r.data.q !== t || (myIds && myIds.has(r.coll + ":" + r.id))) return;
+        remote[r.coll].push(Object.assign({}, r.data, { id: r.id }));
+      });
       const merged = S.merge(mineL, remote, base && base.ids);
       const up = [];
       DATA.forEach(c => {
@@ -219,6 +231,28 @@
     let r; try { r = await rest("trips?id=eq." + encodeURIComponent(t) + "&select=invite"); } catch (e) { return { error: lastErr || "Нет связи с сервером." }; }
     if (!r || !r[0]) return { error: lastErr || "Не получилось подготовить ссылку. Проверь интернет и попробуй ещё раз." };
     return { link: location.href.split("#")[0] + "#join=" + t + "." + r[0].invite };
+  };
+  // only the owner: a new invite link (the old one stops working) and removing a member
+  const ownerRpc = async (fn, args) => {
+    if (!ready || !session) return { error: "Нужен вход в аккаунт." };
+    try { return { r: await rest("rpc/" + fn, { method: "POST", body: JSON.stringify(args) }) }; }
+    catch (e) {
+      if (e.status === 404 || /function|schema cache/i.test(e.message || "")) return { error: "На сервере не хватает обновления (supabase/trips-owner.sql)." };
+      return { error: e.code === "network" ? "Нет связи с сервером." : "Не получилось: " + e.message };
+    }
+  };
+  window.__kolchanTripNewLink = async (t) => {
+    const x = await ownerRpc("trip_new_invite", { p_trip: t });
+    if (x.error) return x;
+    if (!x.r) return { error: "Сменить ссылку может только тот, кто создал поездку." };
+    return { link: location.href.split("#")[0] + "#join=" + t + "." + x.r };
+  };
+  window.__kolchanTripKick = async (t, uid) => {
+    const x = await ownerRpc("trip_kick", { p_trip: t, p_user: uid });
+    if (x.error) return x;
+    if (!x.r) return { error: "Убрать участника может только тот, кто создал поездку." };
+    await syncNow(true);
+    return { ok: true };
   };
   // remove a trip: the owner deletes it for everybody, a member leaves it
   window.__kolchanTripDrop = async (t) => {

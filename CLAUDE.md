@@ -27,7 +27,7 @@ src/build.sh <версия основного> <версия беты>      # н
 
 Превью для артефакта (мок Supabase внутри страницы):
 ```sh
-python3 src/kolchan-src/single_beta.py src out.html <seed.json> kolchan kolchan.test
+src/preview.sh <seed.json> out.html      # сид: kolchan-data/brain/seeds/seed-trips.json
 ```
 Сиды с вещами Алексея лежат в `kolchan-data/brain/seeds/` (личные — в эту репу не класть).
 

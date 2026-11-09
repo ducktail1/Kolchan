@@ -34,6 +34,10 @@
 .remind button { padding: 8px 12px; font-size: 14px; }
 .remind .rbtn { display: flex; gap: 8px; }
 .remind button.ghost { background: transparent; border-color: currentColor; color: inherit; }
+#inst-bar { flex-wrap: nowrap; }
+#inst-bar span { flex: 1; }
+#inst-bar .ix { width: 34px; height: 34px; padding: 0; display: grid; place-items: center; }
+#inst-bar .ix svg { width: 12px; height: 12px; }
 .fb-nick { font-family: var(--font-mono); user-select: all; }
 a.primary { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; background: var(--accent); color: var(--accent-ink); border-radius: 10px; padding: 12px 14px; font-weight: 600; }
 details.sync { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
@@ -198,7 +202,7 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
     inst.innerHTML = '<div class="sheet"><h2>Поставь Колчан на экран «Домой»</h2>' +
       '<div class="note">Так он станет обычным приложением: откроется одним нажатием и будет работать без интернета.</div>' +
       '<ol class="inst-steps">' + (isAndroid ? androidSteps : iosSteps) + '</ol>' +
-      '<div class="inst-warn">Вещи записывай уже в приложении с иконки. ' + (isIOS || !isAndroid ? 'На iPhone у Safari и у иконки разные базы: то, что внесёшь здесь, в приложение не перейдёт.' : 'Так база точно не потеряется.') + '</div>' +
+      '<div class="inst-warn" id="inst-warn">Вещи записывай уже в приложении с иконки. ' + (isIOS || !isAndroid ? 'На iPhone у Safari и у иконки разные базы: то, что внесёшь здесь, в приложение не перейдёт.' : 'Так база точно не потеряется.') + '</div>' +
       '<div class="actions"><div class="right"><button type="button" id="inst-close">Понятно</button></div></div></div>';
     document.body.appendChild(inst);
     const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -206,7 +210,13 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
     const closeInst = () => { inst.hidden = true; lsSet("kolchan.installSeen", "1"); };
     $("inst-close").onclick = closeInst;
     inst.addEventListener("click", (e) => { if (e.target === inst) closeInst(); });
-    window.__showInstall = () => { inst.hidden = false; };
+    const warnLocal = $("inst-warn").textContent;
+    window.__showInstall = () => {
+      // with an account the data follows: it is enough to sign in again in the app
+      const acc = window.__kolchanAccount && window.__kolchanAccount();
+      $("inst-warn").textContent = acc ? "В приложении с иконки войди тем же аккаунтом — все вещи подтянутся." : warnLocal;
+      inst.hidden = false;
+    };
     if (!standalone) {
       // link in the welcome card and in «Данные»
       const how = document.createElement("button"); how.type = "button"; how.className = "link"; how.textContent = "Как поставить на экран «Домой»";
@@ -214,6 +224,15 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
       const dSheet = $("data-bg") && $("data-bg").querySelector(".dataBtns");
       if (dSheet) { const b2 = document.createElement("button"); b2.type = "button"; b2.textContent = "Как поставить на экран «Домой»"; b2.onclick = () => { $("data-bg").hidden = true; window.__showInstall(); }; dSheet.appendChild(b2); }
       if (!window.__KOLCHAN_SEED && (window.__KOLCHAN_PREVIEW || !lsGet("kolchan.installSeen"))) setTimeout(window.__showInstall, 400);
+      // opened in Safari / a browser: a bar on top every time, ✕ hides it for a week
+      const bar = document.createElement("div"); bar.className = "remind"; bar.id = "inst-bar";
+      bar.innerHTML = '<span>Колчан удобнее с экрана «Домой»</span><div class="rbtn"><button type="button" id="inst-bar-how">Как</button><button type="button" class="ghost ix" id="inst-bar-x" aria-label="Скрыть на неделю"></button></div>';
+      bar.querySelector(".ix").innerHTML = X_SVG;
+      const until = +lsGet("kolchan.installBarHide") || 0;
+      bar.hidden = Date.now() < until;
+      wrap.insertBefore(bar, anchor);
+      $("inst-bar-how").onclick = () => window.__showInstall();
+      $("inst-bar-x").onclick = () => { bar.hidden = true; lsSet("kolchan.installBarHide", String(Date.now() + 7 * 864e5)); };
     }
 
     // ---- avatar menu: «Аккаунт» (beta), «Отзыв», «Данные» live behind one round button ----
@@ -270,7 +289,8 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
       const acc = window.__kolchanAccount && window.__kolchanAccount();
       const warn = ["acc-open", "data-open"].some(warnIn);
       ava.classList.toggle("on", !!acc);
-      ava.innerHTML = (acc ? '<span>' + ((acc.email || "?")[0] || "?").toUpperCase() + "</span>" : person) + (warn ? '<span class="dot"></span>' : "");
+      ava.innerHTML = (acc ? "<span></span>" : person) + (warn ? '<span class="dot"></span>' : "");
+      if (acc) ava.firstChild.textContent = ((acc.email || "?")[0] || "?").toUpperCase();
     }
     function closeMenu() { if (menu) { menu.remove(); menu = null; ava.setAttribute("aria-expanded", "false"); } }
     function openMenu() {

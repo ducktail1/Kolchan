@@ -232,6 +232,12 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 .avs { display: flex; flex: none; border: 0; background: none; padding: 6px 2px; border-radius: 999px; }
 .tm-row { display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: center; padding: 12px; border-bottom: 1px solid var(--line); }
 .tm-row:last-child { border-bottom: 0; }
+.tm-row.kk { grid-template-columns: 36px 1fr auto; }
+.tm-kick { padding: 6px 10px; font-size: 13px; }
+#kk { display: flex; flex-direction: column; gap: 12px; }
+#kk-to-wrap { display: flex; flex-direction: column; gap: 8px; }
+#kk-list .item { box-sizing: border-box; display: block; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+#kk-list .item:last-child { border-bottom: 0; }
 .tm-row .av { width: 36px; height: 36px; font-size: 15px; margin: 0; border: 0; }
 .av { width: 24px; height: 24px; border-radius: 50%; font-size: 11px; font-weight: 700; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); border: 2px solid var(--surface); margin-left: -6px; }
 .avs .av:first-child { margin-left: 0; }
@@ -554,6 +560,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="row2"><a class="primary" id="ti-tg" href="#" target="_blank" rel="noopener">Отправить в Telegram</a><button type="button" id="ti-copy">Скопировать</button></div>
     <div class="ok" id="ti-msg" hidden></div>
     <div id="ti-note" hidden></div>
+    <button type="button" class="link" id="ti-new" hidden>Сменить ссылку</button>
   </div>
 </div>
 <div class="sheet-bg" id="tx-bg" hidden>
@@ -601,6 +608,15 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <h2>В какую поездку?</h2>
     <div class="wheel-box" id="tw-wheel"></div>
     <button type="button" class="primary" id="tw-go">Дальше</button>
+  </div>
+</div>
+<div class="sheet-bg" id="kk-bg" hidden>
+  <div class="sheet" id="kk">
+    <h2 id="kk-title">Убрать из поездки</h2>
+    <div class="list" id="kk-list"></div>
+    <div id="kk-to-wrap"><div class="ex-for-h"><span>Кому передать</span></div><div class="ex-for" id="kk-to" role="radiogroup" aria-label="Кому передать"></div></div>
+    <div class="err" id="kk-err" hidden></div>
+    <button type="button" class="danger" id="kk-go">Убрать</button>
   </div>
 </div>
 <div class="sheet-bg" id="ta-bg" hidden>
@@ -708,7 +724,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <h2>Данные</h2>
     <div class="note" id="d-stat"></div>
     <div class="note" id="d-last"></div>
-    <div class="note">Версия Колчана: <b>1.7.2-beta.21</b></div>
+    <div class="note">Версия Колчана: <b>1.7.3-beta.22</b></div>
     <div class="dataBtns">
       <button type="button" class="primary" id="d-export">Выгрузить файл</button>
       <label>Загрузить файл <span class="hint">заменит всю базу на этом телефоне</span>
@@ -736,7 +752,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="actions"><div class="right"><button type="button" id="d-close">Закрыть</button></div></div>
   </div>
 </div>
-<script>window.__KOLCHAN_VERSION = "1.7.2-beta.21";</script>
+<script>window.__KOLCHAN_VERSION = "1.7.3-beta.22";</script>
 <script>window.__KOLCHAN_AVA = true;</script>
 <script src="local.js"></script>
 <script src="friends.js"></script>
@@ -758,6 +774,12 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   const TRIPF = ["src", "taken", "takenBy", "bought", "common", "owner", "trips"];
   const trf = (v) => { const o = {}; TRIPF.forEach(k => { if (v[k] !== undefined && v[k] !== null) o[k] = v[k]; }); return o; };
   let mode = null, sel = new Set(), showMissing = false;
+  // expenses come from other people too: keep only well-formed entries
+  const cleanExp = (a) => (Array.isArray(a) ? a : []).filter(e => e && typeof e === "object" && e.id && Number.isFinite(+e.amt)).map(e => {
+    const o = { id: String(e.id), t: +e.t || 0, u: +e.u || 0, name: String(e.name || ""), amt: +e.amt, by: String(e.by || ""), for: Array.isArray(e.for) ? e.for.map(String) : [] };
+    if (e.split && typeof e.split === "object") { o.split = {}; Object.entries(e.split).forEach(([k, v]) => { if (Number.isFinite(+v)) o.split[k] = +v; }); }
+    return o;
+  });
   const photoSrc = (id) => (window.__photoSrc ? window.__photoSrc(id) : "/_blob/" + id);
   // Collapsible sections: closed by default on the start screen, open when searching or inside a place
   let over = {}, lastOpen = {};
@@ -879,7 +901,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
                 if (c === "quivers" && id !== undefined) {
                   // renaming a trip keeps its kind and dates
                   const prev = quivers.find(x => x.id === id);
-                  if (prev) { out = Object.assign({}, d); ["kind", "from", "to", "exp"].forEach(k => { if (!(k in out) && prev[k]) out[k] = prev[k]; }); }
+                  if (prev) { out = Object.assign({}, d); ["kind", "from", "to", "exp", "expDel"].forEach(k => { if (!(k in out) && prev[k]) out[k] = prev[k]; }); }
                 }
                 if (rawOf[c]) {
                   out = Object.assign({}, d);
@@ -1042,6 +1064,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     return (b.trips || []).filter(x => quivers.some(y => y.id === x.id)).map(x => { const t = document.createElement("span"); t.className = "tape trip"; t.textContent = "в поездке: " + (qName(x.id) || x.name); return t; });
   }
   const avColors = [["var(--accent)", "var(--accent-ink)"], ["#e2c044", "#1d1a0c"], ["#9db4e8", "#111a2c"], ["#e8a39d", "#2c1311"], ["#c7a6e8", "#211230"]];
+  const NOBODY = "—";   // a trip bag nobody carries
+  const bagWho = (b, me) => b.owner || me;
   function avatar(name, i) { const a = document.createElement("div"); a.className = "av"; const c = avColors[i % avColors.length]; a.style.background = c[0]; a.style.color = c[1]; a.textContent = (name || "?")[0].toUpperCase(); a.title = name; return a; }
   async function setTaken(it, on) {
     const d = base(it); d.taken = !!on; d.updatedAt = Date.now();
@@ -1058,7 +1082,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const owners = [];
     const addOwner = (n) => { if (n && !owners.includes(n)) owners.push(n); };
     addOwner(me);
-    if (window.__kolchanTripMembers) window.__kolchanTripMembers(tr.id).forEach(addOwner); tripBags.forEach(b => addOwner(b.owner || me)); common.forEach(it => addOwner(it.takenBy));
+    if (window.__kolchanTripMembers) window.__kolchanTripMembers(tr.id).forEach(addOwner); tripBags.forEach(b => { if (b.owner !== NOBODY) addOwner(bagWho(b, me)); }); common.forEach(it => addOwner(it.takenBy));
     const av = $("trip-avs"); av.textContent = ""; owners.slice(0, 5).forEach((n, i) => av.appendChild(avatar(n, i)));
     const total = inBags.length + common.length, done = inBags.filter(it => it.taken).length + common.filter(it => it.takenBy && it.bought).length;
     $("trip-prog").textContent = total ? "Собрано " + done + " из " + total : "Пока ничего не собрано";
@@ -1068,9 +1092,12 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     $("sec-who-n").textContent = tripBags.length ? tripBags.length + " " + plural(tripBags.length, ["сумка", "сумки", "сумок"]) : "";
     const whoOpen = !("who" in over) || over.who; $("sec-who").setAttribute("aria-expanded", String(whoOpen)); wl.hidden = !whoOpen;
     if (!tripBags.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "Пока пусто."; wl.appendChild(e); }
-    owners.forEach((who, oi) => {
-      const mine = tripBags.filter(b => (b.owner || me) === who); if (!mine.length) return;
-      const h = document.createElement("div"); h.className = "who-h"; h.append(avatar(who, oi), who === me ? (me === "Я" ? "Ты" : who + " (ты)") : who); wl.appendChild(h);
+    owners.concat(NOBODY).forEach((who, oi) => {
+      const mine = tripBags.filter(b => bagWho(b, me) === who); if (!mine.length) return;
+      const h = document.createElement("div"); h.className = "who-h";
+      if (who === NOBODY) { const a = avatar("?", 0); a.style.background = "var(--line)"; a.style.color = "var(--muted)"; h.append(a, "Без хозяина"); }
+      else h.append(avatar(who, oi), who === me ? (me === "Я" ? "Ты" : who + " (ты)") : who);
+      wl.appendChild(h);
       mine.forEach(b => {
         const its = items.filter(it => it.in === b.id), dn = its.filter(it => it.taken).length;
         const row = document.createElement("button"); row.type = "button"; row.className = "item has-rt";
@@ -1233,8 +1260,9 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     }
     return out;
   }
-  async function exSave(tr, exp) {
-    await db.collection("quivers").doc(tr.id).set({ name: tr.name, order: tr.order || 0, kind: "trip", from: tr.from || "", to: tr.to || "", exp });
+  async function exSave(tr, exp, delId) {
+    const expDel = (tr.expDel || []).concat(delId ? [delId] : []).slice(-500);
+    await db.collection("quivers").doc(tr.id).set(Object.assign({ name: tr.name, order: tr.order || 0, kind: "trip", from: tr.from || "", to: tr.to || "", exp }, expDel.length ? { expDel } : {}));
   }
   function renderEx() {
     const tr = exT(); if (!tr) { $("ex-bg").hidden = true; return; }
@@ -1366,13 +1394,13 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     if (!(amt > 0)) { er.textContent = "Укажи сумму."; er.hidden = false; return; }
     if (exMode === "eq" && !exFor.size) { er.textContent = "Отметь, на кого делим."; er.hidden = false; return; }
     const ppl = exPeople(tr), forList = exMode === "cu" ? [] : exFor.size === ppl.length ? [] : [...exFor];   // [] = на всех, включая тех, кто присоединится позже
-    const e = Object.assign({ id: exEdit ? exEdit.id : "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), t: exEdit ? exEdit.t : Date.now(), name, amt, by: exBy || meName(), for: forList }, split ? { split } : {});
+    const e = Object.assign({ id: exEdit ? exEdit.id : "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), t: exEdit ? exEdit.t : Date.now(), u: Date.now(), name, amt, by: exBy || meName(), for: forList }, split ? { split } : {});
     const exp = (tr.exp || []).filter(x => x.id !== e.id).concat(e);
     try { await exSave(tr, exp); closeExForm(); } catch (x) { er.textContent = "Не получилось сохранить. Попробуй ещё раз."; er.hidden = false; }
   });
   $("ex-del").onclick = async () => {
     const tr = exT(); if (!exEdit) return;
-    try { await exSave(tr, (tr.exp || []).filter(x => x.id !== exEdit.id)); closeExForm(); } catch (x) {}
+    try { await exSave(tr, (tr.exp || []).filter(x => x.id !== exEdit.id), exEdit.id); closeExForm(); } catch (x) {}
   };
   // ---------- wheels (like the iPhone clock) ----------
   // makeWheel(box, [{v, t}], value, onChange, cls, loop) → { get, set }; loop: after the last comes the first again
@@ -1430,7 +1458,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const add = (n) => { if (n && !people.includes(n)) people.push(n); };
     add(me); if (!tr) return people;
     if (window.__kolchanTripMembers) window.__kolchanTripMembers(tr.id).forEach(add);
-    rawBags.filter(b => QOF(b) === tr.id && (b.src || b.owner)).forEach(b => add(b.owner || me));
+    rawBags.filter(b => QOF(b) === tr.id && (b.src || b.owner) && b.owner !== NOBODY).forEach(b => add(bagWho(b, me)));
     rawItems.filter(it => QOF(it) === tr.id && it.common && !it.in).forEach(it => add(it.takenBy));
     return people;
   }
@@ -1569,12 +1597,29 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   $("trip-invite").onclick = async () => {
     const tr = curTrip(); if (!tr) return;
     $("ti-title").textContent = "Позвать в «" + tr.name + "»"; $("ti-link").value = "Готовлю ссылку…"; $("ti-msg").hidden = true;
-    $("ti-tg").hidden = true; $("ti-copy").hidden = true; $("ti-note").hidden = true;
+    $("ti-tg").hidden = true; $("ti-copy").hidden = true; $("ti-note").hidden = true; $("ti-new").hidden = true;
     $("ti-bg").hidden = false;
     const r = window.__kolchanTripInvite ? await window.__kolchanTripInvite(tr.id) : { error: "Общие поездки здесь недоступны." };
     if (r.error) { $("ti-link").value = ""; $("ti-link").hidden = true; const m = $("ti-msg"); m.className = "err"; m.textContent = r.error; m.hidden = false; return; }
     $("ti-link").hidden = false; $("ti-link").value = r.link; $("ti-tg").hidden = false; $("ti-copy").hidden = false; $("ti-note").hidden = false;
-    $("ti-tg").href = "https://t.me/share/url?url=" + encodeURIComponent(r.link) + "&text=" + encodeURIComponent("Зову в поездку «" + tr.name + "» в Колчане");
+    tiShow(tr, r.link);
+  };
+  function tiShow(tr, link) {
+    $("ti-link").value = link;
+    $("ti-tg").href = "https://t.me/share/url?url=" + encodeURIComponent(link) + "&text=" + encodeURIComponent("Зову в поездку «" + tr.name + "» в Колчане");
+    const info = window.__kolchanTripInfo && window.__kolchanTripInfo(tr.id);
+    $("ti-new").hidden = !(info && window.__kolchanTripNewLink && info.owner === info.me);
+  }
+  // owner: a new link — the old one stops working
+  $("ti-new").onclick = async () => {
+    const tr = curTrip(); if (!tr) return;
+    const b = $("ti-new"), m = $("ti-msg");
+    if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Старая ссылка перестанет работать. Сменить?"; return; }
+    delete b.dataset.sure; b.disabled = true;
+    const r = await window.__kolchanTripNewLink(tr.id);
+    b.disabled = false; b.textContent = "Сменить ссылку";
+    if (r.error) { m.className = "err"; m.textContent = r.error; m.hidden = false; return; }
+    tiShow(tr, r.link); m.className = "ok"; m.textContent = "Новая ссылка готова."; m.hidden = false;
   };
   $("ti-copy").onclick = async () => {
     const m = $("ti-msg");
@@ -1584,7 +1629,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   };
   // ✕ in the corner instead of «Готово»
   const xClose = (bg) => () => { $(bg).hidden = true; };
-  document.addEventListener("DOMContentLoaded", () => setTimeout(() => { if (window.__kolchanX) { window.__kolchanX($("ti"), xClose("ti-bg")); window.__kolchanX($("tm"), xClose("tm-bg")); window.__kolchanX($("ta"), xClose("ta-bg")); window.__kolchanX($("ex"), xClose("ex-bg")); window.__kolchanX($("tw"), xClose("tw-bg")); } }, 0));
+  document.addEventListener("DOMContentLoaded", () => setTimeout(() => { if (window.__kolchanX) { window.__kolchanX($("ti"), xClose("ti-bg")); window.__kolchanX($("tm"), xClose("tm-bg")); window.__kolchanX($("ta"), xClose("ta-bg")); window.__kolchanX($("ex"), xClose("ex-bg")); window.__kolchanX($("tw"), xClose("tw-bg")); window.__kolchanX($("kk"), kkBack); } }, 0));
   // tap the avatars: who is on this trip
   $("trip-avs").onclick = () => {
     const tr = curTrip(); if (!tr) return;
@@ -1593,10 +1638,14 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     const people = [];
     const add = (n) => { if (n && !people.includes(n)) people.push(n); };
     add(me); if (window.__kolchanTripMembers) window.__kolchanTripMembers(tr.id).forEach(add);
-    tripBags.forEach(b => add(b.owner || me)); common.forEach(it => add(it.takenBy));
+    tripBags.forEach(b => { if (b.owner !== NOBODY) add(bagWho(b, me)); }); common.forEach(it => add(it.takenBy));
+    const info = window.__kolchanTripInfo && window.__kolchanTripInfo(tr.id), used = new Set();
+    const iOwn = !!(info && info.owner && info.owner === info.me && window.__kolchanTripKick);
     people.forEach((n, i) => {
-      const bs = tripBags.filter(b => (b.owner || me) === n), cs = common.filter(it => it.takenBy === n);
+      const bs = tripBags.filter(b => bagWho(b, me) === n), cs = common.filter(it => it.takenBy === n);
       const row = document.createElement("div"); row.className = "tm-row";
+      const mem = iOwn && n !== me ? info.members.find(x => x.name === n && x.id !== info.me && !used.has(x.id)) : null;
+      if (mem) used.add(mem.id);
       const body = document.createElement("div");
       const nm = document.createElement("div"); nm.style.fontWeight = "600"; nm.textContent = n === me ? (me === "Я" ? "Ты" : n + " (ты)") : n;
       const sub = document.createElement("div"); sub.className = "note";
@@ -1604,11 +1653,67 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       if (bs.length) parts.push(bs.length + " " + plural(bs.length, ["сумка", "сумки", "сумок"]) + ": " + bs.map(b => b.name).join(", "));
       if (cs.length) parts.push("берёт из общего: " + cs.map(it => it.name).join(", "));
       sub.textContent = parts.join(" · ") || "пока ничего не добавил";
-      body.append(nm, sub); row.append(avatar(n, i), body); list.appendChild(row);
+      body.append(nm, sub); row.append(avatar(n, i), body);
+      if (mem) {
+        row.classList.add("kk");
+        const k = document.createElement("button"); k.type = "button"; k.className = "danger tm-kick"; k.textContent = "Убрать";
+        k.onclick = () => openKick(tr, n, mem.id, people.filter(x => x !== n));
+        row.appendChild(k);
+      }
+      list.appendChild(row);
     });
     $("tm-title").textContent = "Кто едет в «" + tr.name + "» · " + people.length;
     $("tm-bg").hidden = false;
   };
+  // remove a member: his bags and things from «Общее» go to someone else or to nobody, not collected
+  let kk = null;
+  function openKick(tr, n, uid, others) {
+    const me = meName();
+    const bs = bags.filter(b => (b.src || b.owner) && bagWho(b, me) === n), cs = items.filter(it => it.common && !it.in && it.takenBy === n);
+    kk = { tr, n, uid, bs, cs, to: NOBODY };
+    $("kk-title").textContent = "Убрать из поездки: " + n;
+    const list = $("kk-list"); list.textContent = ""; list.hidden = !(bs.length || cs.length);
+    bs.forEach(b => { const r = document.createElement("div"); r.className = "item"; const nm = document.createElement("div"); nm.className = "name"; nm.textContent = b.name; const sub = document.createElement("div"); sub.className = "note"; const c = items.filter(it => it.in === b.id).length; sub.textContent = "сумка · " + c + " " + plural(c, ["вещь", "вещи", "вещей"]); const body = document.createElement("div"); body.className = "body"; body.append(nm, sub); r.appendChild(body); list.appendChild(r); });
+    cs.forEach(it => { const r = document.createElement("div"); r.className = "item"; const nm = document.createElement("div"); nm.className = "name"; nm.textContent = it.name; const sub = document.createElement("div"); sub.className = "note"; sub.textContent = "из общего"; const body = document.createElement("div"); body.className = "body"; body.append(nm, sub); r.appendChild(body); list.appendChild(r); });
+    $("kk-to-wrap").hidden = !(bs.length || cs.length);
+    const box = $("kk-to");
+    const draw = () => {
+      box.textContent = "";
+      others.concat(NOBODY).forEach(x => {
+        const b = document.createElement("button"); b.type = "button"; b.className = kk.to === x ? "on" : "";
+        b.textContent = x === NOBODY ? "Без хозяина" : x === me ? (me === "Я" ? "я" : x + " (я)") : x;
+        b.setAttribute("role", "radio"); b.setAttribute("aria-checked", String(kk.to === x));
+        b.onclick = () => { kk.to = x; draw(); };
+        box.appendChild(b);
+      });
+    };
+    draw();
+    $("kk-err").hidden = true; $("kk-go").disabled = false; $("kk-go").textContent = "Убрать";
+    $("tm-bg").hidden = true; $("kk-bg").hidden = false;
+  }
+  const kkBack = () => { $("kk-bg").hidden = true; kk = null; $("trip-avs").click(); };
+  $("kk-go").onclick = async () => {
+    if (!kk) return;
+    const { tr, n, uid, bs, cs, to } = kk, go = $("kk-go");
+    go.disabled = true; go.textContent = "…";
+    // expenses stay as they were: «на всех» is fixed to the people before he leaves
+    const ps = exPeople(tr), fix = (tr.exp || []).some(e => !e.split && !(e.for && e.for.length));
+    const r = await window.__kolchanTripKick(tr.id, uid);
+    if (r.error) { go.disabled = false; go.textContent = "Убрать"; const e = $("kk-err"); e.textContent = r.error; e.hidden = false; return; }
+    try {
+      // bags: new carrier (or nobody), everything inside back to «не собрано»
+      for (const b of bs) {
+        await db.collection("bags").doc(b.id).set({ name: b.name, location: b.location || "", dest: b.dest || null, order: b.order || 0, log: b.log || [], owner: to });
+        for (const it of items.filter(x => x.in === b.id)) { const d = base(it); d.taken = false; d.updatedAt = Date.now(); await db.collection("items").doc(it.id).set(d); }
+      }
+      for (const it of cs) await setCommon(it, to === NOBODY ? null : to, false);
+      if (fix) await exSave(tr, (tr.exp || []).map(e => (!e.split && !(e.for && e.for.length)) ? Object.assign({}, e, { for: ps.slice(), u: Date.now() }) : e));
+    } catch (e) {}
+    kk = null; $("kk-bg").hidden = true;
+    if (window.__kolchanStatus) window.__kolchanStatus(n + " больше не в поездке. Ссылка-приглашение сменилась.");
+    $("trip-avs").click();
+  };
+  $("kk-bg").addEventListener("click", (e) => { if (e.target === $("kk-bg")) kkBack(); });
   $("tm-invite").onclick = () => { $("tm-bg").hidden = true; $("trip-invite").click(); };
   $("tm-bg").addEventListener("click", (e) => { if (e.target === $("tm-bg")) $("tm-bg").hidden = true; });
   $("ti-bg").addEventListener("click", (e) => { if (e.target === $("ti-bg")) $("ti-bg").hidden = true; });
@@ -2045,7 +2150,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       const w = $("bag-where"); w.textContent = "«" + viewBag.name + "» сейчас: ";
       const bb = document.createElement("b"); bb.textContent = viewBag.dest ? "В пути → " + viewBag.dest : (viewBag.location || "место не указано"); w.appendChild(bb);
       const tt = tripTapes(viewBag); if (tt.length) { w.append(" "); tt.forEach(x => w.appendChild(x)); }
-      if (curTrip() && viewBag.src) w.append(" · копия из «" + (viewBag.src.qn || "?") + "»" + (viewBag.owner ? (viewBag.owner === meName() ? ", везёшь ты" : ", везёт " + viewBag.owner) : ""));
+      if (curTrip() && viewBag.src) w.append(" · копия из «" + (viewBag.src.qn || "?") + "»" + (viewBag.owner ? (viewBag.owner === NOBODY ? ", без хозяина" : viewBag.owner === meName() ? ", везёшь ты" : ", везёт " + viewBag.owner) : ""));
     }
 
     // list
@@ -2825,7 +2930,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       if (mvStep === "items") renderPick();
     }, onErr);
     db.collection("quivers").orderBy("order").onSnapshot((snap) => {
-      quivers = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", order: v.order || 0, kind: v.kind || null, from: v.from || "", to: v.to || "", exp: Array.isArray(v.exp) ? v.exp : [] }; }).filter(x => x.name);
+      quivers = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", order: v.order || 0, kind: v.kind || null, from: v.from || "", to: v.to || "", exp: cleanExp(v.exp), expDel: Array.isArray(v.expDel) ? v.expDel.map(String) : [] }; }).filter(x => x.name);
       applyQ(); render();
     }, () => {});
   })();

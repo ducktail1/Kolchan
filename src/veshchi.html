@@ -714,7 +714,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   let mode = null, sel = new Set(), showMissing = false;
   // expenses come from other people too: keep only well-formed entries
   const cleanExp = (a) => (Array.isArray(a) ? a : []).filter(e => e && typeof e === "object" && e.id && Number.isFinite(+e.amt)).map(e => {
-    const o = { id: String(e.id), t: +e.t || 0, name: String(e.name || ""), amt: +e.amt, by: String(e.by || ""), for: Array.isArray(e.for) ? e.for.map(String) : [] };
+    const o = { id: String(e.id), t: +e.t || 0, u: +e.u || 0, name: String(e.name || ""), amt: +e.amt, by: String(e.by || ""), for: Array.isArray(e.for) ? e.for.map(String) : [] };
     if (e.split && typeof e.split === "object") { o.split = {}; Object.entries(e.split).forEach(([k, v]) => { if (Number.isFinite(+v)) o.split[k] = +v; }); }
     return o;
   });
@@ -839,7 +839,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
                 if (c === "quivers" && id !== undefined) {
                   // renaming a trip keeps its kind and dates
                   const prev = quivers.find(x => x.id === id);
-                  if (prev) { out = Object.assign({}, d); ["kind", "from", "to", "exp"].forEach(k => { if (!(k in out) && prev[k]) out[k] = prev[k]; }); }
+                  if (prev) { out = Object.assign({}, d); ["kind", "from", "to", "exp", "expDel"].forEach(k => { if (!(k in out) && prev[k]) out[k] = prev[k]; }); }
                 }
                 if (rawOf[c]) {
                   out = Object.assign({}, d);
@@ -1198,8 +1198,9 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     }
     return out;
   }
-  async function exSave(tr, exp) {
-    await db.collection("quivers").doc(tr.id).set({ name: tr.name, order: tr.order || 0, kind: "trip", from: tr.from || "", to: tr.to || "", exp });
+  async function exSave(tr, exp, delId) {
+    const expDel = (tr.expDel || []).concat(delId ? [delId] : []).slice(-500);
+    await db.collection("quivers").doc(tr.id).set(Object.assign({ name: tr.name, order: tr.order || 0, kind: "trip", from: tr.from || "", to: tr.to || "", exp }, expDel.length ? { expDel } : {}));
   }
   function renderEx() {
     const tr = exT(); if (!tr) { $("ex-bg").hidden = true; return; }
@@ -1331,13 +1332,13 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     if (!(amt > 0)) { er.textContent = "Укажи сумму."; er.hidden = false; return; }
     if (exMode === "eq" && !exFor.size) { er.textContent = "Отметь, на кого делим."; er.hidden = false; return; }
     const ppl = exPeople(tr), forList = exMode === "cu" ? [] : exFor.size === ppl.length ? [] : [...exFor];   // [] = на всех, включая тех, кто присоединится позже
-    const e = Object.assign({ id: exEdit ? exEdit.id : "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), t: exEdit ? exEdit.t : Date.now(), name, amt, by: exBy || meName(), for: forList }, split ? { split } : {});
+    const e = Object.assign({ id: exEdit ? exEdit.id : "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), t: exEdit ? exEdit.t : Date.now(), u: Date.now(), name, amt, by: exBy || meName(), for: forList }, split ? { split } : {});
     const exp = (tr.exp || []).filter(x => x.id !== e.id).concat(e);
     try { await exSave(tr, exp); closeExForm(); } catch (x) { er.textContent = "Не получилось сохранить. Попробуй ещё раз."; er.hidden = false; }
   });
   $("ex-del").onclick = async () => {
     const tr = exT(); if (!exEdit) return;
-    try { await exSave(tr, (tr.exp || []).filter(x => x.id !== exEdit.id)); closeExForm(); } catch (x) {}
+    try { await exSave(tr, (tr.exp || []).filter(x => x.id !== exEdit.id), exEdit.id); closeExForm(); } catch (x) {}
   };
   // ---------- wheels (like the iPhone clock) ----------
   // makeWheel(box, [{v, t}], value, onChange, cls, loop) → { get, set }; loop: after the last comes the first again
@@ -1644,7 +1645,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
         for (const it of items.filter(x => x.in === b.id)) { const d = base(it); d.taken = false; d.updatedAt = Date.now(); await db.collection("items").doc(it.id).set(d); }
       }
       for (const it of cs) await setCommon(it, to === NOBODY ? null : to, false);
-      if (fix) await exSave(tr, (tr.exp || []).map(e => (!e.split && !(e.for && e.for.length)) ? Object.assign({}, e, { for: ps.slice() }) : e));
+      if (fix) await exSave(tr, (tr.exp || []).map(e => (!e.split && !(e.for && e.for.length)) ? Object.assign({}, e, { for: ps.slice(), u: Date.now() }) : e));
     } catch (e) {}
     kk = null; $("kk-bg").hidden = true;
     if (window.__kolchanStatus) window.__kolchanStatus(n + " больше не в поездке. Ссылка-приглашение сменилась.");
@@ -2867,7 +2868,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       if (mvStep === "items") renderPick();
     }, onErr);
     db.collection("quivers").orderBy("order").onSnapshot((snap) => {
-      quivers = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", order: v.order || 0, kind: v.kind || null, from: v.from || "", to: v.to || "", exp: cleanExp(v.exp) }; }).filter(x => x.name);
+      quivers = snap.docs.map(d => { const v = d.data() || {}; return { id: d.id, name: v.name || "", order: v.order || 0, kind: v.kind || null, from: v.from || "", to: v.to || "", exp: cleanExp(v.exp), expDel: Array.isArray(v.expDel) ? v.expDel.map(String) : [] }; }).filter(x => x.name);
       applyQ(); render();
     }, () => {});
   })();

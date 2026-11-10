@@ -724,7 +724,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <h2>Данные</h2>
     <div class="note" id="d-stat"></div>
     <div class="note" id="d-last"></div>
-    <div class="note">Версия Колчана: <b>1.7.3-beta.22</b></div>
+    <div class="note">Версия Колчана: <b>1.7.4-beta.23</b></div>
     <div class="dataBtns">
       <button type="button" class="primary" id="d-export">Выгрузить файл</button>
       <label>Загрузить файл <span class="hint">заменит всю базу на этом телефоне</span>
@@ -752,7 +752,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="actions"><div class="right"><button type="button" id="d-close">Закрыть</button></div></div>
   </div>
 </div>
-<script>window.__KOLCHAN_VERSION = "1.7.3-beta.22";</script>
+<script>window.__KOLCHAN_VERSION = "1.7.4-beta.23";</script>
 <script>window.__KOLCHAN_AVA = true;</script>
 <script src="local.js"></script>
 <script src="friends.js"></script>
@@ -1067,7 +1067,56 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   const NOBODY = "—";   // a trip bag nobody carries
   const bagWho = (b, me) => b.owner || me;
   function avatar(name, i) { const a = document.createElement("div"); a.className = "av"; const c = avColors[i % avColors.length]; a.style.background = c[0]; a.style.color = c[1]; a.textContent = (name || "?")[0].toUpperCase(); a.title = name; return a; }
+  // iPhone app: a light tap under the finger
+  const buzz = (style) => { try { const H = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Haptics; if (H) H.impact({ style: style || "LIGHT" }); } catch (e) {} };
+  // iPhone app: quick actions on the icon (and later Siri) call this
+  window.__kolchanAction = (a, text) => {
+    document.querySelectorAll(".sheet-bg").forEach(b => { if (!b.hidden && b.id !== "acc-bg") b.hidden = true; });
+    if (a === "expense") { if (!$("ex-quick").hidden) $("ex-quick").click(); return true; }
+    if (a === "add" && text) { sayAdd(String(text)); return true; }
+    $("home-btn").click();
+    if (a === "search") setTimeout(() => { $("q").focus(); if (text) { $("q").value = String(text); $("q").dispatchEvent(new Event("input")); } }, 120);
+    if (a === "add") setTimeout(() => { if (!$("add").hidden) $("add").click(); }, 120);
+    return true;
+  };
+  // Siri: «маска в чехол Nitro» → form «Новая вещь» with the name and, if it matches, the bag or place
+  const stem = (w) => w.slice(0, Math.max(3, w.length - 2));
+  const like = (name, phrase) => { const n = low(name), ws = low(phrase).split(/\s+/).filter(w => w.length > 1); return ws.length > 0 && ws.every(w => n.includes(stem(w))); };
+  function sayAdd(text) {
+    if (curTrip()) switchQ(MAINQ);
+    $("home-btn").click();
+    let name = text.trim(), where = "";
+    const m = /^(.+?)\s+(?:в|во|на)\s+(.+)$/i.exec(name);
+    if (m) {
+      const b = bags.find(x => like(x.name, m[2]));
+      const pl = !b && places.find(x => like(x.name, m[2]));
+      if (b) { name = m[1]; where = "bag:" + b.id; } else if (pl) { name = m[1]; where = "place:" + pathStr([pl.name]); }
+    }
+    setTimeout(() => {
+      addView(null); openSheet(null);
+      $("f-name").value = cap(name);
+      if (where && [...$("f-where").options].some(o => o.value === where)) $("f-where").value = where;
+    }, 150);
+  }
+  // Siri «где …»: a short list name → where, stored for the app's native side (works without opening the app)
+  let siriT = 0;
+  function siriIndex() {
+    const P = window.__KOLCHAN_NATIVE && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences; if (!P) return;
+    clearTimeout(siriT);
+    siriT = setTimeout(() => {
+      const bagBy = new Map(rawBags.map(b => [b.id, b])), qn = new Map(quivers.map(q => [q.id, q.name]));
+      const rows = rawItems.filter(it => it.name).slice(0, 3000).map(it => {
+        const b = it.in && bagBy.get(it.in);
+        let w = b ? "в «" + b.name + "»" + (b.location ? ", " + b.location : "") : (it.place || "место не указано");
+        if (it.missing) w = "потерялась, последнее место — " + w;
+        if (QOF(it) !== MAINQ && qn.get(QOF(it))) w += " (колчан «" + qn.get(QOF(it)) + "»)";
+        return [it.name, w];
+      });
+      try { P.set({ key: "siri", value: JSON.stringify(rows) }); } catch (e) {}
+    }, 1500);
+  }
   async function setTaken(it, on) {
+    buzz();
     const d = base(it); d.taken = !!on; d.updatedAt = Date.now();
     try { await db.collection("items").doc(it.id).set(d); } catch (e) { setStatus("Не получилось отметить. Попробуй ещё раз."); }
   }
@@ -1260,7 +1309,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     }
     return out;
   }
-  async function exSave(tr, exp, delId) {
+  async function exSave(tr, exp, delId) { buzz("MEDIUM");
     const expDel = (tr.expDel || []).concat(delId ? [delId] : []).slice(-500);
     await db.collection("quivers").doc(tr.id).set(Object.assign({ name: tr.name, order: tr.order || 0, kind: "trip", from: tr.from || "", to: tr.to || "", exp }, expDel.length ? { expDel } : {}));
   }
@@ -1483,7 +1532,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     $("ta-bg").hidden = false;
   }
   $("ta-bg").addEventListener("click", (e) => { if (e.target === $("ta-bg")) $("ta-bg").hidden = true; });
-  async function setCommon(it, who, bought) {
+  async function setCommon(it, who, bought) { buzz();
     const d = base(it); d.common = true; d.takenBy = who || null; d.bought = !!(who && bought); d.updatedAt = Date.now();
     try { await db.collection("items").doc(it.id).set(d); } catch (e) { setStatus("Не получилось сохранить. Попробуй ещё раз."); }
   }
@@ -2004,6 +2053,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 
   // ---------- render ----------
   function render() {
+    siriIndex();
     // inside a bag of a trip: no search (and no «+ Добавить «…»» from it)
     const tripBagView = !!curTrip() && !!bagAt(cur) && !showMissing;
     if (tripBagView && $("q").value) $("q").value = "";

@@ -104,7 +104,10 @@ Deno.serve(async (req) => {
     }
     const { data: lk, error: le } = await admin.auth.admin.generateLink({ type: "magiclink", email });
     if (le || !lk) return J({ error: le ? le.message : "link" }, 500);
-    const { data: ses, error: ve } = await admin.auth.verifyOtp({ type: "magiclink", token_hash: lk.properties.hashed_token });
+    // отдельный клиент: verifyOtp запоминает сессию пользователя в клиенте, и если сделать это на `admin`,
+    // следующие запросы этой же копии функции пойдут уже от имени пользователя → «violates row-level security»
+    const once = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data: ses, error: ve } = await once.auth.verifyOtp({ type: "magiclink", token_hash: lk.properties.hashed_token });
     if (ve || !ses.session) return J({ error: ve ? ve.message : "session" }, 500);
     return J({ session: ses.session });
   }

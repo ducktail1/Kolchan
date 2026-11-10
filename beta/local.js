@@ -17,48 +17,72 @@
   // test bench: every open starts from a fresh copy of the given base (kept in memory only)
   const SEED = PREVIEW && window.__KOLCHAN_SEED;
   if (SEED) DATA.forEach(c => (SEED[c] || []).forEach(o => { if (o && o.id) mem[c].set(o.id, Object.assign({}, o)); }));
-  const dbp = PREVIEW ? Promise.resolve(null) : new Promise((res) => {
-    let settled = false;
-    const fin = (v) => { if (!settled) { settled = true; res(v); } };
-    setTimeout(() => fin(null), 2000);
-    try {
-      const r = indexedDB.open(DB_NAME, DB_VER);
-      r.onupgradeneeded = () => {
-        const d = r.result;
-        STORES.forEach(s => { if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: s === "meta" ? "key" : "id" }); });
-      };
-      r.onsuccess = async () => {
-        const d = r.result;
-        try { const t = d.transaction("meta", "readwrite"); t.objectStore("meta").put({ key: "probe", t: Date.now() }); await done(t); fin(d); }
-        catch (e) { fin(null); }
-      };
-      r.onerror = () => fin(null);
-      r.onblocked = () => fin(null);
-    } catch (e) { fin(null); }
-  });
+  // iOS closes the IndexedDB connection of an app that sat in the background («The database connection is
+  // closing»): then we open it again and repeat the transaction instead of failing
+  let cur = null;
+  const openDb = () => {
+    const p = new Promise((res) => {
+      let settled = false;
+      const fin = (v) => { if (!settled) { settled = true; res(v); } };
+      setTimeout(() => fin(null), 2000);
+      try {
+        const r = indexedDB.open(DB_NAME, DB_VER);
+        r.onupgradeneeded = () => {
+          const d = r.result;
+          STORES.forEach(s => { if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: s === "meta" ? "key" : "id" }); });
+        };
+        r.onsuccess = async () => {
+          const d = r.result;
+          d.onclose = () => { if (cur === p) cur = null; };
+          d.onversionchange = () => { try { d.close(); } catch (e) {} if (cur === p) cur = null; };
+          try { const t = d.transaction("meta", "readwrite"); t.objectStore("meta").put({ key: "probe", t: Date.now() }); await done(t); fin(d); }
+          catch (e) { fin(null); }
+        };
+        r.onerror = () => fin(null);
+        r.onblocked = () => fin(null);
+      } catch (e) { fin(null); }
+    });
+    cur = p;
+    return p;
+  };
+  const dbp = PREVIEW ? Promise.resolve(null) : openDb();
   dbp.then(d => { window.__kolchanMemory = !d && !PREVIEW; });
-  async function all(s) { const d = await dbp; if (!d) return [...mem[s].values()]; return req(d.transaction(s).objectStore(s).getAll()); }
-  async function get(s, k) { const d = await dbp; if (!d) return mem[s].get(k); return req(d.transaction(s).objectStore(s).get(k)); }
-  async function put(s, o) { const d = await dbp; if (!d) { mem[s].set(keyOf(s, o), o); return; } const t = d.transaction(s, "readwrite"); t.objectStore(s).put(o); await done(t); }
-  async function del(s, k) { const d = await dbp; if (!d) { mem[s].delete(k); return; } const t = d.transaction(s, "readwrite"); t.objectStore(s).delete(k); await done(t); }
+  // a transaction on a live connection; null = no IndexedDB at all (memory mode)
+  async function tx(stores, mode) {
+    if (!(await dbp)) return null;
+    let d = await (cur || openDb());
+    try { if (!d) throw new Error("no db"); return d.transaction(stores, mode); }
+    catch (e) {
+      d = await openDb();
+      if (!d) throw new Error("Хранилище на телефоне недоступно — закрой и снова открой Колчан.");
+      return d.transaction(stores, mode);
+    }
+  }
+  // back from the background: check the connection right away
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || PREVIEW || !cur) return;
+    cur.then(d => { if (!d) return; try { d.transaction("meta").abort(); } catch (e) { openDb(); } });
+  });
+  async function all(s) { const t = await tx(s); if (!t) return [...mem[s].values()]; return req(t.objectStore(s).getAll()); }
+  async function get(s, k) { const t = await tx(s); if (!t) return mem[s].get(k); return req(t.objectStore(s).get(k)); }
+  async function put(s, o) { const t = await tx(s, "readwrite"); if (!t) { mem[s].set(keyOf(s, o), o); return; } t.objectStore(s).put(o); await done(t); }
+  async function del(s, k) { const t = await tx(s, "readwrite"); if (!t) { mem[s].delete(k); return; } t.objectStore(s).delete(k); await done(t); }
   async function replaceAll(data) {
-    const d = await dbp;
-    if (!d) {
+    const t = await tx(DATA.concat("photos"), "readwrite");
+    if (!t) {
       DATA.concat("photos").forEach(s => mem[s].clear());
       DATA.forEach(s => (data[s] || []).forEach(o => { if (o && o.id) mem[s].set(o.id, o); }));
       (data.photos || []).forEach(o => mem.photos.set(o.id, o));
       return;
     }
-    const t = d.transaction(DATA.concat("photos"), "readwrite");
     DATA.concat("photos").forEach(s => t.objectStore(s).clear());
     DATA.forEach(s => (data[s] || []).forEach(o => { if (o && o.id) t.objectStore(s).put(o); }));
     (data.photos || []).forEach(o => t.objectStore("photos").put(o));
     await done(t);
   }
   async function replaceData(data) {
-    const d = await dbp;
-    if (!d) { DATA.forEach(s => { mem[s].clear(); (data[s] || []).forEach(o => { if (o && o.id) mem[s].set(o.id, o); }); }); return; }
-    const t = d.transaction(DATA, "readwrite");
+    const t = await tx(DATA, "readwrite");
+    if (!t) { DATA.forEach(s => { mem[s].clear(); (data[s] || []).forEach(o => { if (o && o.id) mem[s].set(o.id, o); }); }); return; }
     DATA.forEach(s => { t.objectStore(s).clear(); (data[s] || []).forEach(o => { if (o && o.id) t.objectStore(s).put(o); }); });
     await done(t);
   }

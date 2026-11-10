@@ -16,7 +16,7 @@ const LOG_MAX = 80;
 const DATA = ["places", "bags", "items", "quivers"];
 const MAINQ = "main", MAIN_NAME = "Основной";
 const QOF = (r) => (r && r.q) || MAINQ;
-export const BOT_VERSION = "1.3.4";
+export const BOT_VERSION = "1.4.0";
 
 // ---------- helpers ----------
 const low = (s) => (s || "").toLowerCase().replace(/ё/g, "е");
@@ -668,10 +668,73 @@ async function handleUpdate(env, u) {
   }
 }
 
+// ---------- сторож и тревоги: пишет только владельцу (OWNER_ID) ----------
+// Нужны: Cron Trigger «*/5 * * * *», KV-привязка STATE, секрет ALERT_SECRET (тот же — в вебхуке Supabase).
+const SB_KEY_PUBLIC = "sb_publishable_PrBfsQIYFTYLzoqWso1CHA_ED-qe00L";   // публичный ключ приложения
+const sbBase = (env) => (env.LOGIN_URL ? new URL(env.LOGIN_URL).origin : "https://jtmujxxpcqjddauitrio.supabase.co");
+const CHECKS = (env) => [
+  { id: "site", name: "Сайт Колчана", url: env.SITE_URL || "https://ducktail1.github.io/Kolchan/", ok: (r) => r.status === 200 },
+  { id: "auth", name: "Вход (Supabase Auth)", url: sbBase(env) + "/auth/v1/health", headers: { apikey: env.SB_KEY || SB_KEY_PUBLIC }, ok: (r) => r.status === 200 },
+  { id: "db", name: "База (Supabase)", url: sbBase(env) + "/rest/v1/trips?select=id&limit=1", headers: { apikey: env.SB_KEY || SB_KEY_PUBLIC }, ok: (r) => r.status < 500 },
+  { id: "tgauth", name: "Вход через Telegram (функция)", url: env.LOGIN_URL, method: "OPTIONS", ok: (r) => r.status < 500 },
+];
+const kvGet = async (env, k) => { try { return env.STATE ? JSON.parse((await env.STATE.get(k)) || "null") : null; } catch (e) { return null; } };
+const kvPut = async (env, k, v, ttl) => { try { if (env.STATE) await env.STATE.put(k, JSON.stringify(v), ttl ? { expirationTtl: ttl } : undefined); } catch (e) {} };
+const toOwner = (env, text) => env.OWNER_ID ? tg(env, "sendMessage", { chat_id: env.OWNER_ID, text, parse_mode: "HTML", link_preview_options: { is_disabled: true } }) : null;
+const mins = (ms) => Math.max(1, Math.round(ms / 60000));
+
+async function watch(env) {
+  const now = Date.now();
+  for (const c of CHECKS(env)) {
+    if (!c.url) continue;
+    let good = false, why = "";
+    try {
+      const r = await fetch(c.url, { method: c.method || "GET", headers: c.headers || {}, signal: AbortSignal.timeout(10000), cf: { cacheTtl: 0 } });
+      good = c.ok(r); why = "ответ " + r.status;
+    } catch (e) { why = e.name === "TimeoutError" ? "нет ответа 10 с" : String(e.message || e).slice(0, 120); }
+    const st = (await kvGet(env, "w:" + c.id)) || { fails: 0, down: false };
+    if (good) {
+      if (st.down) await toOwner(env, "🟢 <b>" + c.name + "</b> снова работает (лежал ~" + mins(now - st.since) + " мин).");
+      if (st.fails || st.down) await kvPut(env, "w:" + c.id, { fails: 0, down: false });
+      continue;
+    }
+    st.fails = (st.fails || 0) + 1;
+    // два провала подряд (10 минут) — тревога; пока лежит — напоминание раз в час
+    if (!st.down && st.fails >= 2) { st.down = true; st.since = now - 5 * 60000; st.told = now; await toOwner(env, "🔴 <b>" + c.name + "</b> не отвечает: " + esc(why) + "\n" + esc(c.url)); }
+    else if (st.down && now - (st.told || 0) > 60 * 60000) { st.told = now; await toOwner(env, "🔴 <b>" + c.name + "</b> всё ещё лежит (~" + mins(now - st.since) + " мин): " + esc(why)); }
+    await kvPut(env, "w:" + c.id, st);
+  }
+}
+
+// ошибки пользователей из журнала (вебхук Supabase на вставку в events) — сразу владельцу, без повторов
+const ALERT_KINDS = { error: "Ошибка в приложении", sync_error: "Не синхронизируется", login_error: "Не получается войти" };
+async function alertEvent(env, rec) {
+  if (!rec || !ALERT_KINDS[rec.kind]) return "skip";
+  const d = rec.data || {}, msg = String(d.msg || "").slice(0, 300);
+  if (rec.kind === "sync_error" && d.code === "network") return "skip";   // у человека пропал интернет — это не наша поломка
+  const key = "a:" + rec.kind + ":" + msg.replace(/[^\p{L}\p{N}]+/gu, " ").trim().slice(0, 80);
+  if (await kvGet(env, key)) return "dup";
+  await kvPut(env, key, 1, 30 * 60);   // одна и та же ошибка — не чаще раза в 30 минут
+  const hour = "h:" + new Date().toISOString().slice(0, 13), n = ((await kvGet(env, hour)) || 0) + 1;
+  await kvPut(env, hour, n, 2 * 3600);
+  if (n > 20) return "cap";
+  const who = rec.user_id ? "аккаунт " + String(rec.user_id).slice(0, 8) : "без входа";
+  const extra = [d.how && "вход: " + d.how, d.status && "код " + d.status, d.at && "где: " + d.at, rec.v && "версия " + rec.v].filter(Boolean).join(" · ");
+  await toOwner(env, "⚠️ <b>" + ALERT_KINDS[rec.kind] + "</b> — " + esc(who) + "\n" + esc(msg || "(без текста)") + (extra ? "\n<i>" + esc(extra) + "</i>" : ""));
+  return "sent";
+}
+
 export default {
+  async scheduled(event, env, ctx) { ctx.waitUntil(watch(env)); },
   async fetch(req, env) {
     const url = new URL(req.url);
     ORIGIN = url.origin;
+    if (url.pathname === "/alert" && req.method === "POST") {
+      if (!env.ALERT_SECRET || req.headers.get("x-alert-secret") !== env.ALERT_SECRET) return new Response("forbidden", { status: 403 });
+      const b = await req.json().catch(() => ({}));
+      return new Response(await alertEvent(env, b.record));
+    }
+    if (url.pathname === "/watch" && url.searchParams.get("key") === env.HOOK_SECRET && env.HOOK_SECRET) { await watch(env); return new Response("checked"); }
     // «Открыть Колчан» from the bot: Telegram buttons can't open kolchan:// directly, this page does
     if (url.pathname === "/open") {
       const html = '<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Колчан</title>'

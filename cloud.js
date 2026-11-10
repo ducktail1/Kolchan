@@ -45,7 +45,13 @@
   }
   async function refresh() {
     if (!session || !session.refresh_token) throw Object.assign(new Error("no session"), { status: 401 });
-    const j = await api("/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: authHeaders(), body: JSON.stringify({ refresh_token: session.refresh_token }) });
+    let j;
+    try { j = await api("/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: authHeaders(), body: JSON.stringify({ refresh_token: session.refresh_token }) }); }
+    catch (e) {
+      // the session was closed on the server (e.g. «Выйти» on another device) — sign in again, nothing local is lost
+      if (e.status === 400 || e.status === 401 || /refresh token/i.test(e.message || "")) throw Object.assign(new Error("Вход устарел"), { status: 401 });
+      throw e;
+    }
     await saveSession(fromAuth(j));
   }
   async function token() {
@@ -54,16 +60,16 @@
     return session.access_token;
   }
   async function signOut() {
-    try { const t = await token(); if (t) await fetch(CFG.url + "/auth/v1/logout", { method: "POST", headers: Object.assign(authHeaders(), { Authorization: "Bearer " + t }) }); } catch (e) {}
+    try { const t = await token(); if (t) await fetch(CFG.url + "/auth/v1/logout?scope=local", { method: "POST", headers: Object.assign(authHeaders(), { Authorization: "Bearer " + t }) }); } catch (e) {}
     await saveSession(null);
   }
   // OAuth providers (Google и др.) come back with tokens in the address: #access_token=…&refresh_token=…
-  async function takeRedirect() {
-    const h = new URLSearchParams(location.hash.slice(1));
+  async function takeRedirect(hash) {
+    const h = new URLSearchParams((hash != null ? hash : location.hash).replace(/^#/, ""));
     if (h.get("error_description")) { history.replaceState(null, "", location.pathname); return "Вход не удался: " + h.get("error_description"); }
     if (!h.get("access_token")) return null;
     const at = h.get("access_token"), rt = h.get("refresh_token"), exp = +h.get("expires_at") || 0;
-    history.replaceState(null, "", location.pathname);
+    if (hash == null) history.replaceState(null, "", location.pathname);
     const u = await api("/auth/v1/user", { headers: Object.assign(authHeaders(), { Authorization: "Bearer " + at }) });
     await saveSession({ access_token: at, refresh_token: rt, expires_at: exp ? exp * 1000 : Date.now() + 3600000, user: { id: u.id, email: u.email || "", meta: metaOf(u) } });
     return "ok";
@@ -72,7 +78,10 @@
     await api("/auth/v1/resend?redirect_to=" + encodeURIComponent(location.origin + location.pathname), { method: "POST", headers: authHeaders(), body: JSON.stringify({ type: "signup", email }) });
   }
   // Google always shows the account chooser (otherwise it silently reuses the last account)
-  const oauthUrl = (provider) => CFG.url + "/auth/v1/authorize?provider=" + provider + "&redirect_to=" + encodeURIComponent(location.origin + location.pathname) + (provider === "google" ? "&prompt=select_account" : "");
+  // in the iPhone app the sign-in page opens in the system browser and comes back by kolchan://auth
+  const CAP = () => (window.__KOLCHAN_NATIVE && window.Capacitor && window.Capacitor.Plugins) || null;
+  const backTo = () => CAP() ? "kolchan://auth" : location.origin + location.pathname;
+  const oauthUrl = (provider) => CFG.url + "/auth/v1/authorize?provider=" + provider + "&redirect_to=" + encodeURIComponent(backTo()) + (provider === "google" ? "&prompt=select_account" : "");
 
   // ---------- data: one table "records" (user_id, coll, id, data, deleted, updated_at) ----------
   async function rest(path, opt) {
@@ -144,7 +153,7 @@
         lastErr = "";
         setState("Синхронизировано: " + fmt.format(new Date(t)));
       } catch (e) {
-        lastErr = e.code === "network" ? "Нет связи с сервером. Если интернет есть — возможно, сервер заблокирован." : e.status === 401 || e.status === 403 ? "Вход устарел — войди заново." : "Не получилось синхронизировать: " + e.message;
+        lastErr = e.code === "network" ? "Нет связи с сервером. Если интернет есть — возможно, сервер заблокирован." : e.status === 401 || e.status === 403 ? "Вход устарел — войди заново. Вещи на этом телефоне сохранятся и уедут в облако после входа." : "Не получилось синхронизировать: " + e.message;
         if (e.status === 401) await saveSession(null);
         setState(lastErr, true);
       }
@@ -294,11 +303,12 @@
   const FN = () => CFG.url + "/functions/v1/tg-auth";
   let tgPend = null, tgTimer = null;
   const randCode = () => { const a = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", r = new Uint8Array(32); crypto.getRandomValues(r); return [...r].map(x => a[x % a.length]).join(""); };
-  const tgLink = (p) => "https://t.me/" + (CFG.tgBot || "") + "?start=login_" + p.code + (p.mode === "phone" ? "_p" : "");
+  const tgTail = (p) => (p.mode === "phone" ? "_p" : "") + (window.__KOLCHAN_NATIVE ? "_a" : "");   // _a: from the iPhone app → the bot gives a button back
+  const tgLink = (p) => "https://t.me/" + (CFG.tgBot || "") + "?start=login_" + p.code + tgTail(p);
   // on a phone go straight into the Telegram app (tg://): a t.me link from the installed app opens an
   // in-app browser that stays white after the hand-off and has to be closed with «Готово»
   const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const tgApp = (p) => "tg://resolve?domain=" + (CFG.tgBot || "") + "&start=login_" + p.code + (p.mode === "phone" ? "_p" : "");
+  const tgApp = (p) => "tg://resolve?domain=" + (CFG.tgBot || "") + "&start=login_" + p.code + tgTail(p);
   function openTg(p) {
     if (!mobile) { const w = window.open(tgLink(p), "_blank"); if (!w) location.href = tgLink(p); return; }
     location.href = tgApp(p);   // no Telegram app → the wait window has a web link
@@ -511,7 +521,15 @@
     sh.querySelectorAll("[data-p]").forEach(b => b.onclick = () => {
       if (b.disabled) return;
       if (b.dataset.p === "telegram" || b.dataset.p === "phone") tgStart(b.dataset.p === "phone" ? "phone" : "tg", false);
+      else if (CAP() && CAP().Browser) CAP().Browser.open({ url: oauthUrl(b.dataset.p), presentationStyle: "popover" });
       else location.href = oauthUrl(b.dataset.p);
+    });
+    if (CAP() && CAP().App) CAP().App.addListener("appUrlOpen", async (e) => {
+      const u = String((e && e.url) || "");
+      if (!u.startsWith("kolchan://auth")) return;
+      try { CAP().Browser && CAP().Browser.close(); } catch (x) {}
+      const i = u.indexOf("#") >= 0 ? u.indexOf("#") : u.indexOf("?");
+      try { const r = await takeRedirect(i >= 0 ? u.slice(i + 1) : ""); if (r === "ok") { open(); syncNow(true); } else if (r) { open(); err(r); } } catch (x) { open(); err(ruErr(x)); }
     });
     $("acc-link-tg").onclick = () => tgStart("tg", true);
     if ($("acc-local-go")) $("acc-local-go").onclick = async () => { localOk = true; await K.put("meta", { key: "localMode", on: true }); sh.hidden = true; paint(); };
@@ -553,7 +571,11 @@
     window.__kolchanLogout = () => { err(""); paint(); sh.hidden = false; $("acc-logout-confirm").hidden = false; };
     $("acc-logout-no").onclick = () => { $("acc-logout-confirm").hidden = true; };
     $("acc-logout-yes").onclick = async () => {
+      const t0 = Date.now();
       await syncNow(true);
+      // not saved to the cloud just now — don't wipe this phone, the things would be lost
+      const b = await K.get("meta", "cloudBase");
+      if (!(b && b.t >= t0)) { $("acc-logout-confirm").hidden = true; err("Выход отменён: не получилось сохранить вещи в облако. " + (lastErr || "Нет связи.")); return; }
       await signOut();
       await K.replaceData(Object.fromEntries(DATA.map(c => [c, []]))); await Promise.all(DATA.map(K.emit));
       await K.put("meta", { key: "cloudBase", none: true });

@@ -16,7 +16,7 @@
 
   // ---------- auth (Supabase GoTrue over plain fetch) ----------
   let session = null;   // { access_token, refresh_token, expires_at, user: { id, email } }
-  const saveSession = async (s) => { session = s; if (s) await K.put("meta", Object.assign({ key: "cloudSession" }, s)); else await K.put("meta", { key: "cloudSession", none: true }); paint(); if (window.__kolchanRemind) window.__kolchanRemind(); if (s && joinPend) setTimeout(doJoin, 0); };
+  const saveSession = async (s) => { const was = session; session = s; if (s && !was && window.__kolchanEvent) window.__kolchanEvent("signin", { how: /@tg\.kolchan\.app$/i.test((s.user && s.user.email) || "") ? "telegram" : "email/google" }); if (s) await K.put("meta", Object.assign({ key: "cloudSession" }, s)); else await K.put("meta", { key: "cloudSession", none: true }); paint(); if (window.__kolchanRemind) window.__kolchanRemind(); if (s && joinPend) setTimeout(doJoin, 0); };
   const metaOf = (u) => { const m = (u && u.user_metadata) || {}; return { name: m.name || "", phone: m.phone || "", tg_id: m.tg_id || null, tg_username: m.tg_username || "" }; };
   const fromAuth = (j) => ({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at ? j.expires_at * 1000 : Date.now() + (j.expires_in || 3600) * 1000, user: { id: j.user && j.user.id, email: (j.user && (j.user.email || (j.user.user_metadata && j.user.user_metadata.email))) || "", meta: metaOf(j.user) } });
   // accounts made through Telegram get a service address that is never shown
@@ -110,6 +110,27 @@
   const canon = (o) => JSON.stringify(Object.keys(o).filter(k => k !== "_t").sort().reduce((m, k) => (m[k] = o[k], m), {}));
 
   let running = null, timer = null, lastErr = "";
+  // ---------- журнал действий (таблица events, 90 дней) ----------
+  let evq = [], evOk = true, evDev = "";
+  const EVMAX = 500;
+  window.__kolchanEvent = (kind, data) => {
+    try {
+      if (!session) return;   // only for accounts: without one nothing leaves the phone
+      evq.push({ t: new Date().toISOString(), kind: String(kind).slice(0, 40), data: data || {} });
+      if (evq.length > EVMAX) evq = evq.slice(-EVMAX);
+      K.put("meta", { key: "evq", q: evq });
+    } catch (e) {}
+  };
+  async function evFlush() {
+    if (!session || !evOk || !evq.length) return;
+    const send = evq.slice(0, 200), v = String(window.__KOLCHAN_VERSION || "").slice(0, 40);
+    try {
+      await rest("events", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(send.map(e => ({ t: e.t, kind: e.kind, data: e.data, v, dev: evDev }))) });
+      evq = evq.slice(send.length); await K.put("meta", { key: "evq", q: evq });
+    } catch (e) { if (e.status === 404 || /events/.test(e.message || "")) evOk = false; }   // the table isn't there yet — try again after a restart
+  }
+  window.addEventListener("error", (e) => window.__kolchanEvent("error", { msg: String(e.message || "").slice(0, 300), at: String(e.filename || "").split("/").pop() + ":" + (e.lineno || 0) }));
+  window.addEventListener("unhandledrejection", (e) => window.__kolchanEvent("error", { msg: String((e.reason && (e.reason.message || e.reason)) || "").slice(0, 300), at: "promise" }));
   async function syncNow(manual) {
     if (!ready || !session) return;
     if (running) return running;
@@ -152,8 +173,10 @@
         await K.put("meta", { key: "cloudBase", t, user: uid, ids: Object.fromEntries(DATA.map(c => [c, merged[c].map(r => r.id)])) });
         lastErr = "";
         setState("Синхронизировано: " + fmt.format(new Date(t)));
+        evFlush();
       } catch (e) {
         lastErr = e.code === "network" ? "Нет связи с сервером. Если интернет есть — возможно, сервер заблокирован." : e.status === 401 || e.status === 403 ? "Вход устарел — войди заново. Вещи на этом телефоне сохранятся и уедут в облако после входа." : "Не получилось синхронизировать: " + e.message;
+        window.__kolchanEvent("sync_error", { msg: String(e.message || "").slice(0, 300), status: e.status || 0, code: e.code || "" });
         if (e.status === 401) await saveSession(null);
         setState(lastErr, true);
       }
@@ -592,6 +615,9 @@
     if (!joinPend) { const jp = await K.get("meta", "joinPending"); if (jp && jp.t) joinPend = { t: jp.t, inv: jp.inv || "" }; }
     const s = await K.get("meta", "cloudSession");
     session = s && s.access_token ? { access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at, user: s.user } : null;
+    const eq = await K.get("meta", "evq"); evq = (eq && Array.isArray(eq.q)) ? eq.q : [];
+    const dv = await K.get("meta", "device"); evDev = dv && dv.id ? dv.id : Math.random().toString(36).slice(2, 12); if (!(dv && dv.id)) await K.put("meta", { key: "device", id: evDev });
+    window.__kolchanEvent("open", { app: window.__KOLCHAN_NATIVE ? "iphone" : (navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches)) ? "home" : "browser", w: innerWidth, h: innerHeight });
     paint();
     if (ready) {
       try { const r = await takeRedirect(); if (r && r !== "ok") { open(); err(r); } else if (r === "ok") open(); } catch (e) { open(); err(ruErr(e)); }

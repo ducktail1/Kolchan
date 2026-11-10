@@ -885,6 +885,25 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   // ---------- quivers ----------
   // Wrap the store so every write lands in the right quiver: an existing record keeps its quiver,
   // a new one goes to the open quiver; an explicit q moves it ("main" is stored as no q).
+  // журнал действий: что создано / изменено / удалено (только поля, по которым видно, что произошло)
+  const EVF = ["name", "in", "place", "location", "q", "kind", "from", "to", "common", "takenBy", "bought", "taken", "missing", "owner"];
+  const evName = (c, r) => r ? r.name : undefined;
+  function evWrite(c, id, prev, next) {
+    if (!window.__kolchanEvent) return;
+    const bn = (v) => { const b = rawBags.find(x => x.id === v); return b ? b.name : v; };
+    const show = (k, v) => k === "in" ? (v ? bn(v) : "") : v;
+    if (!next) { window.__kolchanEvent("delete", { c, id, name: evName(c, prev) }); return; }
+    if (!prev) {
+      const d = { c, id, name: next.name };
+      EVF.forEach(k => { if (k !== "name" && next[k] !== undefined && next[k] !== null && next[k] !== "" && next[k] !== false) d[k] = show(k, next[k]); });
+      if (Array.isArray(next.exp)) d.exp = next.exp.length;
+      window.__kolchanEvent("create", d); return;
+    }
+    const ch = {};
+    EVF.forEach(k => { const a = prev[k] === undefined || prev[k] === null ? "" : prev[k], b = next[k] === undefined || next[k] === null ? "" : next[k]; if (JSON.stringify(a) !== JSON.stringify(b)) ch[k] = [show(k, a), show(k, b)]; });
+    const ea = (prev.exp || []).length, eb = (next.exp || []).length; if (ea !== eb) ch.exp = [ea, eb];
+    if (Object.keys(ch).length) window.__kolchanEvent("edit", { c, id, name: next.name, ch });
+  }
   function quiverDb(real) {
     const rawOf = { places: () => rawPlaces, bags: () => rawBags, items: () => rawItems };
     return {
@@ -911,9 +930,15 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
                   if (!("q" in out)) { const prev = id !== undefined ? rawOf[c]().find(x => x.id === id) : null; out.q = prev ? prev.q : curQ; }
                   if (!out.q || out.q === MAINQ) delete out.q;
                 }
+                const all = c === "quivers" ? quivers : rawOf[c] ? rawOf[c]() : null;
+                try { if (all) evWrite(c, id !== undefined ? id : rd.id, id !== undefined ? all.find(x => x.id === id) : null, out); } catch (e) {}
                 return rd.set(out);
               },
-              delete() { return rd.delete(); }
+              delete() {
+                const all = c === "quivers" ? quivers : rawOf[c] ? rawOf[c]() : null;
+                try { if (all) evWrite(c, id, all.find(x => x.id === id), null); } catch (e) {}
+                return rd.delete();
+              }
             };
           }
         };

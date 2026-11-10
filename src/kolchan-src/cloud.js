@@ -45,7 +45,13 @@
   }
   async function refresh() {
     if (!session || !session.refresh_token) throw Object.assign(new Error("no session"), { status: 401 });
-    const j = await api("/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: authHeaders(), body: JSON.stringify({ refresh_token: session.refresh_token }) });
+    let j;
+    try { j = await api("/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: authHeaders(), body: JSON.stringify({ refresh_token: session.refresh_token }) }); }
+    catch (e) {
+      // the session was closed on the server (e.g. «Выйти» on another device) — sign in again, nothing local is lost
+      if (e.status === 400 || e.status === 401 || /refresh token/i.test(e.message || "")) throw Object.assign(new Error("Вход устарел"), { status: 401 });
+      throw e;
+    }
     await saveSession(fromAuth(j));
   }
   async function token() {
@@ -54,7 +60,7 @@
     return session.access_token;
   }
   async function signOut() {
-    try { const t = await token(); if (t) await fetch(CFG.url + "/auth/v1/logout", { method: "POST", headers: Object.assign(authHeaders(), { Authorization: "Bearer " + t }) }); } catch (e) {}
+    try { const t = await token(); if (t) await fetch(CFG.url + "/auth/v1/logout?scope=local", { method: "POST", headers: Object.assign(authHeaders(), { Authorization: "Bearer " + t }) }); } catch (e) {}
     await saveSession(null);
   }
   // OAuth providers (Google и др.) come back with tokens in the address: #access_token=…&refresh_token=…
@@ -147,7 +153,7 @@
         lastErr = "";
         setState("Синхронизировано: " + fmt.format(new Date(t)));
       } catch (e) {
-        lastErr = e.code === "network" ? "Нет связи с сервером. Если интернет есть — возможно, сервер заблокирован." : e.status === 401 || e.status === 403 ? "Вход устарел — войди заново." : "Не получилось синхронизировать: " + e.message;
+        lastErr = e.code === "network" ? "Нет связи с сервером. Если интернет есть — возможно, сервер заблокирован." : e.status === 401 || e.status === 403 ? "Вход устарел — войди заново. Вещи на этом телефоне сохранятся и уедут в облако после входа." : "Не получилось синхронизировать: " + e.message;
         if (e.status === 401) await saveSession(null);
         setState(lastErr, true);
       }
@@ -565,7 +571,11 @@
     window.__kolchanLogout = () => { err(""); paint(); sh.hidden = false; $("acc-logout-confirm").hidden = false; };
     $("acc-logout-no").onclick = () => { $("acc-logout-confirm").hidden = true; };
     $("acc-logout-yes").onclick = async () => {
+      const t0 = Date.now();
       await syncNow(true);
+      // not saved to the cloud just now — don't wipe this phone, the things would be lost
+      const b = await K.get("meta", "cloudBase");
+      if (!(b && b.t >= t0)) { $("acc-logout-confirm").hidden = true; err("Выход отменён: не получилось сохранить вещи в облако. " + (lastErr || "Нет связи.")); return; }
       await signOut();
       await K.replaceData(Object.fromEntries(DATA.map(c => [c, []]))); await Promise.all(DATA.map(K.emit));
       await K.put("meta", { key: "cloudBase", none: true });

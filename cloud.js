@@ -121,6 +121,17 @@
       K.put("meta", { key: "evq", q: evq });
     } catch (e) {}
   };
+  // без входа — сразу на сервер, но только ошибки входа и не больше 20 за раз
+  let anonN = 0;
+  function report(kind, data) {
+    if (session) { window.__kolchanEvent(kind, data); return; }
+    if (!ready || anonN++ > 20) return;
+    try {
+      fetch(CFG.url + "/rest/v1/events", { method: "POST", headers: Object.assign(authHeaders(), { Prefer: "return=minimal" }),
+        body: JSON.stringify({ t: new Date().toISOString(), kind, data: data || {}, v: String(window.__KOLCHAN_VERSION || "").slice(0, 40), dev: evDev }) }).catch(() => {});
+    } catch (e) {}
+  }
+  window.__kolchanReport = report;
   async function evFlush() {
     if (!session || !evOk || !evq.length) return;
     const send = evq.slice(0, 200), v = String(window.__KOLCHAN_VERSION || "").slice(0, 40);
@@ -366,7 +377,7 @@
   function tgLoop() { clearTimeout(tgTimer); tgTimer = setTimeout(tgPoll, 2500); }
   async function tgPoll() {
     const p = tgPend; if (!p) return;
-    if (Date.now() - p.t > 10 * 60000) { $("acc-wait-err").textContent = "Время вышло. Нажми «Отмена» и начни вход заново."; $("acc-wait-err").hidden = false; await tgStop(false); return; }
+    if (Date.now() - p.t > 10 * 60000) { report("login_fail", { how: "telegram", msg: "timeout 10 min" }); $("acc-wait-err").textContent = "Время вышло. Нажми «Отмена» и начни вход заново."; $("acc-wait-err").hidden = false; await tgStop(false); return; }
     try {
       const headers = { "Content-Type": "application/json", apikey: CFG.key };
       if (p.link && session) headers.Authorization = "Bearer " + (await token());
@@ -374,6 +385,7 @@
       const j = await r.json().catch(() => ({}));
       if (r.status === 410) { $("acc-wait-err").textContent = "Время вышло. Нажми «Отмена» и начни вход заново."; $("acc-wait-err").hidden = false; await tgStop(false); return; }
       if (!r.ok) throw Object.assign(new Error(j.error || ("http " + r.status)), { status: r.status });
+      p.fails = 0;
       if (j.pending) { tgLoop(); return; }
       if (j.linked && session) {
         session.user.meta = Object.assign({}, session.user.meta, metaOf({ user_metadata: j.user_metadata }));
@@ -392,8 +404,11 @@
       }
       tgLoop();
     } catch (e) {
-      if (e.status === 409 || e.status === 401) { $("acc-wait-err").textContent = e.message; $("acc-wait-err").hidden = false; await tgStop(false); return; }
-      tgLoop();   // нет сети или сервер не ответил — пробуем дальше
+      if (e.status === 409 || e.status === 401) { report("login_error", { how: "telegram", msg: String(e.message).slice(0, 300), status: e.status }); $("acc-wait-err").textContent = e.message; $("acc-wait-err").hidden = false; await tgStop(false); return; }
+      // нет сети или сервер не ответил — пробуем дальше; три сбоя подряд — это уже ошибка, сообщаем один раз
+      p.fails = (p.fails || 0) + 1;
+      if (p.fails === 3) report("login_error", { how: "telegram", msg: String(e.message || "").slice(0, 300), status: e.status || 0, poll: true });
+      tgLoop();
     }
   }
 
@@ -476,7 +491,11 @@
       ? "База хранится онлайн в твоём аккаунте и на этом телефоне — с любого устройства после входа будет одно и то же. «Выгрузить файл» — дополнительная копия на всякий случай."
       : "Пока ты не вошёл, база хранится только на этом телефоне. Войди в аккаунт, чтобы она хранилась онлайн, или время от времени нажимай «Выгрузить файл».";
   }
-  function err(t) { const e = $("acc-err"); e.textContent = t || ""; e.hidden = !t; }
+  function err(t) {
+    const e = $("acc-err"); e.textContent = t || ""; e.hidden = !t;
+    // ошибка на экране входа: неверный пароль — просто в журнал, остальное — сигнал, что вход сломан
+    if (t && !session) report(/неверн|парол|не подтвержд|уже зарегистр|минимум/i.test(t) ? "login_fail" : "login_error", { how: "account", msg: String(t).slice(0, 300) });
+  }
   const ruErr = (e) => {
     const m = (e.message || "").toLowerCase(), c = e.code || "";
     if (e.code === "network") return "Нет связи с сервером. Проверь интернет; если он есть — сервер может быть заблокирован, попробуй с VPN.";

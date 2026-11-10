@@ -1,0 +1,27 @@
+name: QA
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Playwright
+        working-directory: qa
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Все сценарии
+        working-directory: qa
+        run: node run.js ..
+      - name: Отчёт
+        if: always()
+        run: cat qa/report.md >> "$GITHUB_STEP_SUMMARY"

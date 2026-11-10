@@ -219,7 +219,10 @@
         if (r.coll === "quivers" ? r.id !== t || r.data.kind !== "trip" : r.data.q !== t || (myIds && myIds.has(r.coll + ":" + r.id))) return;
         remote[r.coll].push(Object.assign({}, r.data, { id: r.id }));
       });
-      const merged = S.merge(mineL, remote, base && base.ids);
+      // the trip itself is not on this phone (fresh install, after «Выйти», another account) — take it from the
+      // server as is; a stale base would turn «nothing here» into «everything was deleted here»
+      const fresh = !mineL.quivers.length || !base || base.user !== session.user.id;
+      const merged = S.merge(mineL, remote, fresh ? null : base.ids);
       const up = [];
       DATA.forEach(c => {
         const R = new Map(remote[c].map(r => [r.id, r])), M = new Set(merged[c].map(r => r.id));
@@ -228,7 +231,7 @@
         out[c].push(...merged[c]);
       });
       for (let i = 0; i < up.length; i += 200) await rest("trip_records?on_conflict=trip_id,coll,id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(up.slice(i, i + 200)) });
-      await K.put("meta", { key: bKey, ids: Object.fromEntries(DATA.map(c => [c, merged[c].map(r => r.id)])) });
+      await K.put("meta", { key: bKey, user: session.user.id, ids: Object.fromEntries(DATA.map(c => [c, merged[c].map(r => r.id)])) });
     }
     return out;
   }
@@ -579,6 +582,7 @@
       await signOut();
       await K.replaceData(Object.fromEntries(DATA.map(c => [c, []]))); await Promise.all(DATA.map(K.emit));
       await K.put("meta", { key: "cloudBase", none: true });
+      for (const m of await K.all("meta")) if (String(m.key || "").startsWith("tripBase:")) await K.put("meta", { key: m.key, none: true });
       localOk = false; await K.put("meta", { key: "localMode", none: true });
       $("acc-logout-confirm").hidden = true; setState(""); paint();
     };

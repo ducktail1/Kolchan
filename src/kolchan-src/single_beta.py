@@ -64,6 +64,7 @@ mock = r'''<script>
       if (M === "GET") { const t = eq("trip_id"); return J([...TR.recs.values()].filter(r => r.trip_id === t)); }
       body.forEach(r => TR.recs.set(r.trip_id + "|" + r.coll + "|" + r.id, r)); return new Response(null, { status: 201 });
     }
+    if (p === "/rest/v1/events") { (window.__mockEvents = window.__mockEvents || []).push(...body); return new Response(null, { status: 201 }); }
     if (p === "/rest/v1/rpc/trip_new_invite") { const t = TR.trips.find(x => x.id === body.p_trip && x.owner === "u1"); if (!t) return J(null); t.invite = tok(); return J(t.invite); }
     if (p === "/rest/v1/rpc/trip_kick") {
       if (!owns(body.p_trip) || body.p_user === "u1") return J(false);

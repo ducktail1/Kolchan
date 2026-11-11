@@ -1,0 +1,7 @@
+{
+  "name": "kolchan-qa",
+  "private": true,
+  "description": "QA Колчана: все сценарии на собранном сайте с поддельным Supabase",
+  "scripts": { "qa": "node run.js .." },
+  "dependencies": { "playwright": "1.63.0" }
+}

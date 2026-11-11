@@ -32,3 +32,12 @@ src/preview.sh <seed.json> out.html      # сид: kolchan-data/brain/seeds/seed
 Сиды с вещами Алексея лежат в `kolchan-data/brain/seeds/` (личные — в эту репу не класть).
 
 Тесты: Playwright + Chromium предустановлены; страницу отдавать локальным http-сервером, перед `goto` на другой hash — `about:blank`.
+
+## QA (обязательно перед каждым выкатом)
+```sh
+src/build.sh <версия> <версия беты> && node qa/run.js     # все сценарии, отчёт в qa/report.md
+```
+- Сценарии в `qa/run.js`, поддельный Supabase (правила доступа как на сервере) — `qa/mock-supabase.js`. Новая функция или найденный баг → новый сценарий.
+- На каждом PR в `main` QA запускается сам (GitHub Actions, `.github/workflows/qa.yml`); красный — не мержить.
+- Перед PR прогнать локально и написать Алексею короткий отчёт: сколько сценариев, что упало, что починено.
+- Тревоги: бот 1.4.0 — сторож (cron каждые 5 мин) и `/alert` (вебхук Supabase на вставку в `events`).

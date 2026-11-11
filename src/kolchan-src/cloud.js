@@ -16,7 +16,7 @@
 
   // ---------- auth (Supabase GoTrue over plain fetch) ----------
   let session = null;   // { access_token, refresh_token, expires_at, user: { id, email } }
-  const saveSession = async (s) => { session = s; if (s) await K.put("meta", Object.assign({ key: "cloudSession" }, s)); else await K.put("meta", { key: "cloudSession", none: true }); paint(); if (window.__kolchanRemind) window.__kolchanRemind(); if (s && joinPend) setTimeout(doJoin, 0); };
+  const saveSession = async (s) => { const was = session; session = s; if (s && !was && window.__kolchanEvent) window.__kolchanEvent("signin", { how: /@tg\.kolchan\.app$/i.test((s.user && s.user.email) || "") ? "telegram" : "email/google" }); if (s) await K.put("meta", Object.assign({ key: "cloudSession" }, s)); else await K.put("meta", { key: "cloudSession", none: true }); paint(); if (window.__kolchanRemind) window.__kolchanRemind(); if (s && joinPend) setTimeout(doJoin, 0); };
   const metaOf = (u) => { const m = (u && u.user_metadata) || {}; return { name: m.name || "", phone: m.phone || "", tg_id: m.tg_id || null, tg_username: m.tg_username || "" }; };
   const fromAuth = (j) => ({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at ? j.expires_at * 1000 : Date.now() + (j.expires_in || 3600) * 1000, user: { id: j.user && j.user.id, email: (j.user && (j.user.email || (j.user.user_metadata && j.user.user_metadata.email))) || "", meta: metaOf(j.user) } });
   // accounts made through Telegram get a service address that is never shown
@@ -110,6 +110,38 @@
   const canon = (o) => JSON.stringify(Object.keys(o).filter(k => k !== "_t").sort().reduce((m, k) => (m[k] = o[k], m), {}));
 
   let running = null, timer = null, lastErr = "";
+  // ---------- журнал действий (таблица events, 90 дней) ----------
+  let evq = [], evOk = true, evDev = "";
+  const EVMAX = 500;
+  window.__kolchanEvent = (kind, data) => {
+    try {
+      if (!session) return;   // only for accounts: without one nothing leaves the phone
+      evq.push({ t: new Date().toISOString(), kind: String(kind).slice(0, 40), data: data || {} });
+      if (evq.length > EVMAX) evq = evq.slice(-EVMAX);
+      K.put("meta", { key: "evq", q: evq });
+    } catch (e) {}
+  };
+  // без входа — сразу на сервер, но только ошибки входа и не больше 20 за раз
+  let anonN = 0;
+  function report(kind, data) {
+    if (session) { window.__kolchanEvent(kind, data); return; }
+    if (!ready || anonN++ > 20) return;
+    try {
+      fetch(CFG.url + "/rest/v1/events", { method: "POST", headers: Object.assign(authHeaders(), { Prefer: "return=minimal" }),
+        body: JSON.stringify({ t: new Date().toISOString(), kind, data: data || {}, v: String(window.__KOLCHAN_VERSION || "").slice(0, 40), dev: evDev }) }).catch(() => {});
+    } catch (e) {}
+  }
+  window.__kolchanReport = report;
+  async function evFlush() {
+    if (!session || !evOk || !evq.length) return;
+    const send = evq.slice(0, 200), v = String(window.__KOLCHAN_VERSION || "").slice(0, 40);
+    try {
+      await rest("events", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(send.map(e => ({ t: e.t, kind: e.kind, data: e.data, v, dev: evDev }))) });
+      evq = evq.slice(send.length); await K.put("meta", { key: "evq", q: evq });
+    } catch (e) { if (e.status === 404 || /events/.test(e.message || "")) evOk = false; }   // the table isn't there yet — try again after a restart
+  }
+  window.addEventListener("error", (e) => window.__kolchanEvent("error", { msg: String(e.message || "").slice(0, 300), at: String(e.filename || "").split("/").pop() + ":" + (e.lineno || 0) }));
+  window.addEventListener("unhandledrejection", (e) => window.__kolchanEvent("error", { msg: String((e.reason && (e.reason.message || e.reason)) || "").slice(0, 300), at: "promise" }));
   async function syncNow(manual) {
     if (!ready || !session) return;
     if (running) return running;
@@ -152,8 +184,10 @@
         await K.put("meta", { key: "cloudBase", t, user: uid, ids: Object.fromEntries(DATA.map(c => [c, merged[c].map(r => r.id)])) });
         lastErr = "";
         setState("Синхронизировано: " + fmt.format(new Date(t)));
+        evFlush();
       } catch (e) {
         lastErr = e.code === "network" ? "Нет связи с сервером. Если интернет есть — возможно, сервер заблокирован." : e.status === 401 || e.status === 403 ? "Вход устарел — войди заново. Вещи на этом телефоне сохранятся и уедут в облако после входа." : "Не получилось синхронизировать: " + e.message;
+        window.__kolchanEvent("sync_error", { msg: String(e.message || "").slice(0, 300), status: e.status || 0, code: e.code || "" });
         if (e.status === 401) await saveSession(null);
         setState(lastErr, true);
       }
@@ -219,7 +253,10 @@
         if (r.coll === "quivers" ? r.id !== t || r.data.kind !== "trip" : r.data.q !== t || (myIds && myIds.has(r.coll + ":" + r.id))) return;
         remote[r.coll].push(Object.assign({}, r.data, { id: r.id }));
       });
-      const merged = S.merge(mineL, remote, base && base.ids);
+      // the trip itself is not on this phone (fresh install, after «Выйти», another account) — take it from the
+      // server as is; a stale base would turn «nothing here» into «everything was deleted here»
+      const fresh = !mineL.quivers.length || !base || base.user !== session.user.id;
+      const merged = S.merge(mineL, remote, fresh ? null : base.ids);
       const up = [];
       DATA.forEach(c => {
         const R = new Map(remote[c].map(r => [r.id, r])), M = new Set(merged[c].map(r => r.id));
@@ -228,7 +265,7 @@
         out[c].push(...merged[c]);
       });
       for (let i = 0; i < up.length; i += 200) await rest("trip_records?on_conflict=trip_id,coll,id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(up.slice(i, i + 200)) });
-      await K.put("meta", { key: bKey, ids: Object.fromEntries(DATA.map(c => [c, merged[c].map(r => r.id)])) });
+      await K.put("meta", { key: bKey, user: session.user.id, ids: Object.fromEntries(DATA.map(c => [c, merged[c].map(r => r.id)])) });
     }
     return out;
   }
@@ -340,7 +377,7 @@
   function tgLoop() { clearTimeout(tgTimer); tgTimer = setTimeout(tgPoll, 2500); }
   async function tgPoll() {
     const p = tgPend; if (!p) return;
-    if (Date.now() - p.t > 10 * 60000) { $("acc-wait-err").textContent = "Время вышло. Нажми «Отмена» и начни вход заново."; $("acc-wait-err").hidden = false; await tgStop(false); return; }
+    if (Date.now() - p.t > 10 * 60000) { report("login_fail", { how: "telegram", msg: "timeout 10 min" }); $("acc-wait-err").textContent = "Время вышло. Нажми «Отмена» и начни вход заново."; $("acc-wait-err").hidden = false; await tgStop(false); return; }
     try {
       const headers = { "Content-Type": "application/json", apikey: CFG.key };
       if (p.link && session) headers.Authorization = "Bearer " + (await token());
@@ -348,6 +385,7 @@
       const j = await r.json().catch(() => ({}));
       if (r.status === 410) { $("acc-wait-err").textContent = "Время вышло. Нажми «Отмена» и начни вход заново."; $("acc-wait-err").hidden = false; await tgStop(false); return; }
       if (!r.ok) throw Object.assign(new Error(j.error || ("http " + r.status)), { status: r.status });
+      p.fails = 0;
       if (j.pending) { tgLoop(); return; }
       if (j.linked && session) {
         session.user.meta = Object.assign({}, session.user.meta, metaOf({ user_metadata: j.user_metadata }));
@@ -366,8 +404,11 @@
       }
       tgLoop();
     } catch (e) {
-      if (e.status === 409 || e.status === 401) { $("acc-wait-err").textContent = e.message; $("acc-wait-err").hidden = false; await tgStop(false); return; }
-      tgLoop();   // нет сети или сервер не ответил — пробуем дальше
+      if (e.status === 409 || e.status === 401) { report("login_error", { how: "telegram", msg: String(e.message).slice(0, 300), status: e.status }); $("acc-wait-err").textContent = e.message; $("acc-wait-err").hidden = false; await tgStop(false); return; }
+      // нет сети или сервер не ответил — пробуем дальше; три сбоя подряд — это уже ошибка, сообщаем один раз
+      p.fails = (p.fails || 0) + 1;
+      if (p.fails === 3) report("login_error", { how: "telegram", msg: String(e.message || "").slice(0, 300), status: e.status || 0, poll: true });
+      tgLoop();
     }
   }
 
@@ -450,7 +491,11 @@
       ? "База хранится онлайн в твоём аккаунте и на этом телефоне — с любого устройства после входа будет одно и то же. «Выгрузить файл» — дополнительная копия на всякий случай."
       : "Пока ты не вошёл, база хранится только на этом телефоне. Войди в аккаунт, чтобы она хранилась онлайн, или время от времени нажимай «Выгрузить файл».";
   }
-  function err(t) { const e = $("acc-err"); e.textContent = t || ""; e.hidden = !t; }
+  function err(t) {
+    const e = $("acc-err"); e.textContent = t || ""; e.hidden = !t;
+    // ошибка на экране входа: неверный пароль — просто в журнал, остальное — сигнал, что вход сломан
+    if (t && !session) report(/неверн|парол|не подтвержд|уже зарегистр|минимум/i.test(t) ? "login_fail" : "login_error", { how: "account", msg: String(t).slice(0, 300) });
+  }
   const ruErr = (e) => {
     const m = (e.message || "").toLowerCase(), c = e.code || "";
     if (e.code === "network") return "Нет связи с сервером. Проверь интернет; если он есть — сервер может быть заблокирован, попробуй с VPN.";
@@ -579,6 +624,7 @@
       await signOut();
       await K.replaceData(Object.fromEntries(DATA.map(c => [c, []]))); await Promise.all(DATA.map(K.emit));
       await K.put("meta", { key: "cloudBase", none: true });
+      for (const m of await K.all("meta")) if (String(m.key || "").startsWith("tripBase:")) await K.put("meta", { key: m.key, none: true });
       localOk = false; await K.put("meta", { key: "localMode", none: true });
       $("acc-logout-confirm").hidden = true; setState(""); paint();
     };
@@ -588,6 +634,9 @@
     if (!joinPend) { const jp = await K.get("meta", "joinPending"); if (jp && jp.t) joinPend = { t: jp.t, inv: jp.inv || "" }; }
     const s = await K.get("meta", "cloudSession");
     session = s && s.access_token ? { access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at, user: s.user } : null;
+    const eq = await K.get("meta", "evq"); evq = (eq && Array.isArray(eq.q)) ? eq.q : [];
+    const dv = await K.get("meta", "device"); evDev = dv && dv.id ? dv.id : Math.random().toString(36).slice(2, 12); if (!(dv && dv.id)) await K.put("meta", { key: "device", id: evDev });
+    window.__kolchanEvent("open", { app: window.__KOLCHAN_NATIVE ? "iphone" : (navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches)) ? "home" : "browser", w: innerWidth, h: innerHeight });
     paint();
     if (ready) {
       try { const r = await takeRedirect(); if (r && r !== "ok") { open(); err(r); } else if (r === "ok") open(); } catch (e) { open(); err(ruErr(e)); }

@@ -30,6 +30,8 @@ async function phone(opt = {}) {
   p.on("dialog", d => { p.errs.push("dialog: " + d.message()); d.dismiss(); });
   const url = BASE + (opt.beta ? "beta/" : "");
   await p.goto(url); await sleep(1200);
+  // мастер первого запуска — в своих сценариях; в остальных считаем пройденным
+  if (!opt.onboard) await p.evaluate(() => window.__kolchan.put("meta", { key: "onboard", done: true }));
   if (opt.uid) {
     const s = mock.session(opt.uid), u = mock.users.get(opt.uid);
     await p.evaluate(([s, u]) => window.__kolchan.put("meta", { key: "cloudSession", access_token: s.access_token, refresh_token: s.refresh_token, expires_at: Date.now() + 3600e3, user: { id: u.id, email: u.email, meta: { name: u.name } } }), [s, u]);
@@ -50,10 +52,10 @@ async function closeSheets(p) { await p.evaluate(() => document.querySelectorAll
 async function scenario(name, fn) {
   const t0 = Date.now(); let ok = true, err = "";
   const opened = [];
-  try { await fn(opened); } catch (e) { ok = false; err = String(e.message || e).split("\n")[0].slice(0, 300); }
+  try { await fn(opened); if (opened.skip) err = "пропущен: " + opened.skip; } catch (e) { ok = false; err = String(e.message || e).split("\n")[0].slice(0, 300); }
   for (const p of opened) { if (p.errs && p.errs.length && ok) { ok = false; err = "ошибка на странице: " + p.errs[0].slice(0, 200); } try { await p.ctx.close(); } catch (e) {} }
   results.push({ name, ok, err, s: ((Date.now() - t0) / 1000).toFixed(1) });
-  console.log((ok ? "✅ " : "❌ ") + name + (ok ? "" : " — " + err));
+  console.log((ok ? "✅ " : "❌ ") + name + (err ? " — " + err : ""));
 }
 const track = (opened, p) => { opened.push(p); return p; };
 
@@ -83,6 +85,83 @@ const track = (opened, p) => { opened.push(p); return p; };
     // поиск
     await p.fill("#q", "паль"); await sleep(400);
     check((await p.evaluate(() => document.body.innerText)).includes("Пальто"), "поиск не нашёл «Пальто»");
+  });
+
+  // ---------- Мастер первого запуска ----------
+  const obNext = (p) => p.click("#ob-act button.primary");
+  await scenario("Мастер первого запуска: два места, три вещи, сумка; продолжение после перезапуска; дальше без ошибок", async (o) => {
+    mock = createMock();
+    const p = track(o, await phone({ onboard: true }));
+    if (!(await p.$("#ob-bg"))) { o.skip = "в основном пока нет (только бета)"; return; }
+    check(!(await p.isVisible("#ob")), "мастер не должен перекрывать экран входа");
+    await p.click("#acc-local-go"); await sleep(400);
+    await p.evaluate(() => { for (const id of ["wel-bg", "inst-bg"]) { const e = document.getElementById(id); if (e) e.hidden = true; } }); await sleep(1500);
+    check(await p.isVisible("#ob"), "мастер не открылся у нового пользователя");
+    check(await p.isDisabled("#ob-act button.primary"), "«Дальше» без мест должна быть неактивна");
+    await p.fill("#ob-p1", "квартира"); await p.locator(".ob-chips button", { hasText: "Гараж" }).click(); await obNext(p); await sleep(600);
+    check(JSON.stringify((await names(p, "places")).sort()) === JSON.stringify(["Гараж", "Квартира"]), "места не создались: " + (await names(p, "places")));
+    // прервали посреди шага 2 — после перезапуска мастер продолжает с него
+    await p.reload(); await sleep(2500); await p.evaluate(() => { for (const id of ["wel-bg", "inst-bg"]) { const e = document.getElementById(id); if (e) e.hidden = true; } }); await sleep(1500);
+    check(await p.isVisible("#ob-i1"), "после перезапуска мастер не продолжил с вещей");
+    await p.fill("#ob-i1", "пальто"); await p.fill("#ob-i2", "дрель"); await p.fill("#ob-i3", "палатка");
+    await p.locator(".ob-item").nth(1).locator("button", { hasText: "Гараж" }).click();
+    await p.locator(".ob-item").nth(2).locator("button", { hasText: "Гараж" }).click();
+    await obNext(p); await sleep(600);
+    const it = await all(p, "items"), at = Object.fromEntries(it.map(i => [i.name, (i.in ? "сумка" : i.place)]));
+    check(it.length === 3 && at["Пальто"] === "Квартира" && at["Дрель"] === "Гараж" && at["Палатка"] === "Гараж", "вещи не там: " + JSON.stringify(at));
+    await p.fill("#ob-b", "рюкзак"); await obNext(p); await sleep(600);
+    check(!(await p.isVisible("#ob")), "мастер не закрылся");
+    const bags = await all(p, "bags"); check(bags.length === 1 && bags[0].name === "Рюкзак" && bags[0].location === "Квартира", "сумка: " + JSON.stringify(bags));
+    // дальше обычные формы: вещь в сумку, вещь в место, новая сумка, новая вещь с новым местом
+    await p.click("#add"); await sleep(200); await p.click("#add-item"); await p.fill("#f-name", "маска"); await p.selectOption("#f-where", "bag:" + bags[0].id); await p.click("#f-save"); await sleep(400);
+    await p.click("#add"); await sleep(200); await p.click("#add-item"); await p.fill("#f-name", "свитер"); await p.selectOption("#f-where", "place:Квартира"); await p.click("#f-save"); await sleep(400);
+    await p.click("#add"); await sleep(200); await p.click("#add-bag"); await p.fill("#ab-name", "чехол"); await p.selectOption("#ab-where", "place:Гараж").catch(() => p.selectOption("#ab-where", "Гараж")); await p.click("#add-bag-form button[type=submit]"); await sleep(400);
+    // случай Галины: несколько вещей через запятую в новое место «дом» — в место, без сумки, с заглавной
+    await p.click("#add"); await sleep(200); await p.click("#add-item"); await p.fill("#f-name", "плащ красный, пальто кашемир"); await p.selectOption("#f-where", "__new"); await p.fill("#f-new", "дом"); await p.click("#f-save"); await sleep(500);
+    const g = (await all(p, "items")).filter(i => /^(Плащ|Пальто кашемир)/.test(i.name));
+    check(g.length === 2 && g.every(i => !i.in && i.place === "Дом"), "вещи через запятую в новое место: " + JSON.stringify(g.map(i => [i.name, i.in, i.place])));
+    check((await names(p, "places")).includes("Дом"), "место «Дом» не создалось");
+    const it2 = await all(p, "items"), b2 = await all(p, "bags");
+    check(it2.find(i => i.name === "Маска").in === bags[0].id, "маска не в рюкзаке");
+    check(!it2.find(i => i.name === "Свитер").in && it2.find(i => i.name === "Свитер").place === "Квартира", "свитер не в месте");
+    check(b2.length === 2 && it2.length === 7, "лишние сумки/вещи: сумок " + b2.length + ", вещей " + it2.length);
+    await p.reload(); await sleep(2500);
+    check(!(await p.isVisible("#ob")), "мастер открылся повторно");
+  });
+
+  await scenario("Мастер с аккаунтом: новый — видит, с вещами в облаке — не видит", async (o) => {
+    mock = createMock(); mock.addUser("n1", "new@k.ru", "pw1234", "Новый"); mock.addUser("e1", "old@k.ru", "pw1234", "Старый");
+    mock.db.records.push({ user_id: "e1", coll: "items", id: "x1", data: { id: "x1", name: "Дрель", place: "Дом", parts: ["дом"], log: [] }, deleted: false });
+    const a = track(o, await phone({ uid: "n1", beta: true, onboard: true })); await sleep(2500);
+    check(await a.isVisible("#ob"), "новый пользователь с аккаунтом не видит мастер");
+    const b = track(o, await phone({ uid: "e1", beta: true, onboard: true })); await sleep(3000);
+    check(!(await b.isVisible("#ob")), "мастер открылся у пользователя с вещами в облаке");
+    check((await names(b, "items")).includes("Дрель"), "вещи из облака не пришли");
+  });
+
+  await scenario("Удаление сумки: вещи остаются в месте сумки, пустая удаляется", async (o) => {
+    mock = createMock();
+    const p = track(o, await phone()); await p.click("#acc-local-go"); await sleep(400); await closeSheets(p);
+    await p.click("#add"); await sleep(200); await p.click("#add-bag"); await p.fill("#ab-name", "рюкзак"); await p.selectOption("#ab-where", "__new"); await p.fill("#ab-new", "Дача"); await p.click("#add-bag-form button[type=submit]"); await sleep(400);
+    await p.click("#add"); await sleep(200); await p.click("#add-bag"); await p.fill("#ab-name", "чехол"); await p.selectOption("#ab-where", "place:Дача").catch(() => p.selectOption("#ab-where", "Дача")); await p.click("#add-bag-form button[type=submit]"); await sleep(400);
+    const bag = (await all(p, "bags")).find(b => b.name === "Рюкзак");
+    for (const n of ["маска", "очки"]) { await p.click("#add"); await sleep(200); await p.click("#add-item"); await p.fill("#f-name", n); await p.selectOption("#f-where", "bag:" + bag.id); await p.click("#f-save"); await sleep(400); }
+    if (!(await p.isVisible("#bags"))) { await p.click("#sec-bags"); await sleep(300); }
+    await p.locator("#bags button.item", { hasText: "Рюкзак" }).click(); await sleep(400);
+    await p.click("#bag-del"); await sleep(200);
+    check((await p.textContent("#bag-del-text")).includes("(2)"), "в подтверждении нет числа вещей: " + await p.textContent("#bag-del-text"));
+    await p.click("#bag-del-ok"); await sleep(600);
+    const its = await all(p, "items"), bs = await all(p, "bags");
+    check(!bs.some(b => b.name === "Рюкзак"), "сумка не удалилась");
+    check(its.length === 2 && its.every(i => !i.in && i.place === "Дача"), "вещи не в месте «Дача»: " + JSON.stringify(its.map(i => [i.name, i.in, i.place])));
+    check(its.every(i => (i.log || []).some(e => e.kind === "move")), "в истории вещей нет перемещения");
+    await p.click("#home-btn"); await sleep(400);
+    if (!(await p.isVisible("#bags"))) { await p.click("#sec-bags"); await sleep(300); }
+    await p.locator("#bags button.item", { hasText: "Чехол" }).click(); await sleep(400);
+    await p.click("#bag-del"); await sleep(200);
+    check((await p.textContent("#bag-del-text")).includes("пустую"), "для пустой сумки другой текст: " + await p.textContent("#bag-del-text"));
+    await p.click("#bag-del-ok"); await sleep(600);
+    check((await all(p, "bags")).length === 0 && (await all(p, "items")).length === 2, "пустая сумка не удалилась или пропали вещи");
   });
 
   // ---------- 2. Колчаны ----------

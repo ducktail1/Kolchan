@@ -16,6 +16,8 @@ put("UIApplicationShortcutItems", [
   { UIApplicationShortcutItemType: "expense", UIApplicationShortcutItemTitle: "Трата", UIApplicationShortcutItemIconSymbolName: "rublesign" },
 ]);
 put("CFBundleDevelopmentRegion", "ru");
+// Siri склоняет: «в Колчане», «в Колчан» — даём ей другие формы названия, иначе ищет «Колчан» в App Store
+put("INAlternativeAppNames", ["Колчане", "Колчану", "Колчана"].map(n => ({ INAlternativeAppName: n })));
 let p = readFileSync(pbx, "utf8");
 p = p.replace("developmentRegion = en;", "developmentRegion = ru;");
 if (!/knownRegions = \([^)]*\bru,/.test(p)) p = p.replace(/knownRegions = \(\n/, (m) => m + "\t\t\t\tru,\n");

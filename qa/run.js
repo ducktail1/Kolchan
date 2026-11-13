@@ -204,6 +204,12 @@ const track = (opened, p) => { opened.push(p); return p; };
     const cdp = await p.ctx.newCDPSession(p), T = (type, x) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y: box.y + 20 }] });
     let x = box.x + box.width - 30; await T("touchStart", x); for (let i = 0; i < 10; i++) { x -= 15; await T("touchMove", x); await sleep(16); } await T("touchEnd"); await sleep(400);
     check(await p.locator("#tr-list .tr-undo").first().isVisible(), "после свайпа нет кнопки «Отменить»");
+    // касание в другом месте закрывает «Отменить»
+    const open1 = () => p.evaluate(() => document.querySelectorAll("#tr-list .tr-sw.is-open").length);
+    check(await open1() === 1, "после свайпа строка не открыта");
+    await T("touchStart", box.x + 40); await T("touchEnd"); await p.mouse.click(5, 5); await sleep(300);
+    check(await open1() === 0, "«Отменить» не закрылась от касания в другом месте");
+    x = box.x + box.width - 30; await T("touchStart", x); for (let i = 0; i < 10; i++) { x -= 15; await T("touchMove", x); await sleep(16); } await T("touchEnd"); await sleep(400);
     await p.locator("#tr-list .tr-undo").first().click(); await sleep(600);
     const b2 = (await all(p, "bags")).find(b => b.id === "b2");
     check(b2.location === "Гараж" && !b2.dest, "перемещение не отменилось: " + b2.location + " → " + b2.dest);

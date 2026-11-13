@@ -2793,9 +2793,13 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     await setBag(b, { location: back, dest: null, log: addLog(b.log, { t: Date.now(), from: b.location || "", to: back, note: "отменил перемещение" }) });
     render();
   }
+  // открыта только одна «Отменить»: касание любого другого места (другой строки, кнопки, экрана) её закрывает
+  let trOpenClose = null;
+  document.addEventListener("pointerdown", (e) => { if (trOpenClose && !e.target.closest(".tr-sw.is-open")) trOpenClose(); }, true);
   function trSwipe(sw, row) {
     const W = 112; let x0 = 0, y0 = 0, dx = 0, on = false, open = false, id = null, dragged = false;
     const set = (x, anim) => { row.style.transition = anim ? "" : "none"; row.style.transform = x ? "translateX(" + x + "px)" : ""; };
+    const close = () => { open = false; set(0, true); sw.classList.remove("is-open"); if (trOpenClose === close) trOpenClose = null; };
     row.addEventListener("pointerdown", (e) => { if (e.target.closest("button")) return; id = e.pointerId; x0 = e.clientX; y0 = e.clientY; dx = open ? -W : 0; on = false; });
     row.addEventListener("pointermove", (e) => {
       if (e.pointerId !== id) return;
@@ -2805,10 +2809,11 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     });
     const end = (e) => {
       if (e.pointerId !== id) return; id = null; if (!on) return;
-      open = dx < -W / 2; set(open ? -W : 0, true); dragged = true; setTimeout(() => { dragged = false; }, 50);
+      open = dx < -W / 2; set(open ? -W : 0, true); dragged = true;
+      if (open) { if (trOpenClose && trOpenClose !== close) trOpenClose(); trOpenClose = close; sw.classList.add("is-open"); } else close(); setTimeout(() => { dragged = false; }, 50);
     };
     row.addEventListener("pointerup", end); row.addEventListener("pointercancel", end);
-    row.addEventListener("click", (e) => { if (dragged) { dragged = false; e.stopPropagation(); e.preventDefault(); return; } if (open && !e.target.closest("button")) { open = false; set(0, true); e.stopPropagation(); } }, true);
+    row.addEventListener("click", (e) => { if (dragged) { dragged = false; e.stopPropagation(); e.preventDefault(); return; } if (open && !e.target.closest("button")) { close(); e.stopPropagation(); } }, true);
   }
   async function setBag(b, patch) {
     const d = { name: b.name, location: b.location || "", order: b.order || 0, log: b.log || [], dest: b.dest || null };

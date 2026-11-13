@@ -140,8 +140,8 @@ const track = (opened, p) => { opened.push(p); return p; };
   });
 
   await scenario("Удаление сумки: вещи остаются в месте сумки, пустая удаляется", async (o) => {
-    mock = createMock();
-    const p = track(o, await phone()); await p.click("#acc-local-go"); await sleep(400); await closeSheets(p);
+    mock = createMock(); mock.addUser("d1", "d1@k.ru", "pw1234", "Удалятор");
+    const p = track(o, await phone({ uid: "d1", beta: true })); await closeSheets(p);
     await p.click("#add"); await sleep(200); await p.click("#add-bag"); await p.fill("#ab-name", "рюкзак"); await p.selectOption("#ab-where", "__new"); await p.fill("#ab-new", "Дача"); await p.click("#add-bag-form button[type=submit]"); await sleep(400);
     await p.click("#add"); await sleep(200); await p.click("#add-bag"); await p.fill("#ab-name", "чехол"); await p.selectOption("#ab-where", "place:Дача").catch(() => p.selectOption("#ab-where", "Дача")); await p.click("#add-bag-form button[type=submit]"); await sleep(400);
     const bag = (await all(p, "bags")).find(b => b.name === "Рюкзак");
@@ -165,8 +165,8 @@ const track = (opened, p) => { opened.push(p); return p; };
   });
 
   await scenario("Удаление места: вещи и сумки переезжают, куда выбрал; пустое удаляется; отмена перемещения свайпом", async (o) => {
-    mock = createMock();
-    const p = track(o, await phone()); await p.click("#acc-local-go"); await sleep(400); await closeSheets(p);
+    mock = createMock(); mock.addUser("d2", "d2@k.ru", "pw1234", "Удалятор");
+    const p = track(o, await phone({ uid: "d2", beta: true })); await closeSheets(p);
     await p.evaluate(async () => {
       const K = window.__kolchan, t = Date.now();
       for (const [id, name] of [["pl1", "Дача"], ["pl2", "Гараж"], ["pl3", "Сарай"]]) await K.put("places", { id, name, order: 0 });

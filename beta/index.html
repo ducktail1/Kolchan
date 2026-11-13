@@ -79,6 +79,12 @@ input:placeholder-shown + .clr { display: none; }
 .tr-name { font-weight: 600; overflow-wrap: anywhere; }
 .tr-meta { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tr-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.tr-sw { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); }
+.tr-sw:last-child { border-bottom: 0; }
+.tr-sw .tr-row { position: relative; background: var(--surface); border-bottom: 0; touch-action: pan-y; transition: transform .2s ease; }
+.tr-sw .tr-undo { position: absolute; top: 0; right: 0; bottom: 0; width: 112px; border: 0; border-radius: 0; background: #c9533f; color: #fff; font-weight: 600; }
+#rn-del { width: 100%; }
+#rn-del-to { width: 100%; margin-top: 8px; }
 .tr-btns button { padding: 8px 12px; font-size: 14px; }
 h1 { font-family: var(--font-display); font-weight: 600; font-size: 22px; margin: 0; letter-spacing: -.01em; }
 h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0; font-weight: 600; }
@@ -292,6 +298,21 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 .ex-for-h { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .ex-for { display: flex; flex-wrap: wrap; gap: 8px; }
 .ex-for button { padding: 8px 12px; border-radius: 999px; }
+/* первый запуск: мастер */
+#ob { min-height: 70%; }
+.ob-dots { display: flex; gap: 6px; }
+.ob-dots i { width: 22px; height: 4px; border-radius: 2px; background: var(--line); }
+.ob-dots i.on { background: var(--accent); }
+.ob-sub { color: var(--muted); font-size: 15px; line-height: 1.4; }
+#ob-body { display: flex; flex-direction: column; gap: 12px; }
+#ob-body input { width: 100%; box-sizing: border-box; }
+.ob-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ob-chips button { padding: 7px 12px; border-radius: 999px; font-size: 14px; }
+.ob-item { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; }
+#ob-act { display: flex; flex-direction: column; gap: 10px; margin-top: auto; }
+#ob-act button { min-height: 50px; font-size: 16px; }
+@keyframes obPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(127, 196, 166, 0); } 50% { box-shadow: 0 0 0 10px rgba(127, 196, 166, .35); } }
+.ob-pulse { animation: obPulse 1.2s ease-in-out 4; }
 .ex-for button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 .ex-mode { margin: 0; }
 .ex-cu-row { display: grid; grid-template-columns: minmax(0, 1fr) 130px; gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); }
@@ -610,6 +631,16 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <button type="button" class="primary" id="tw-go">Дальше</button>
   </div>
 </div>
+<div class="sheet-bg" id="ob-bg" hidden>
+  <div class="sheet" id="ob" role="dialog" aria-modal="true" aria-labelledby="ob-title">
+    <div class="ob-dots" id="ob-dots"><i></i><i></i><i></i></div>
+    <h2 id="ob-title"></h2>
+    <div class="ob-sub" id="ob-sub"></div>
+    <div id="ob-body"></div>
+    <div class="err" id="ob-err" hidden></div>
+    <div id="ob-act"></div>
+  </div>
+</div>
 <div class="sheet-bg" id="kk-bg" hidden>
   <div class="sheet" id="kk">
     <h2 id="kk-title">Убрать из поездки</h2>
@@ -634,7 +665,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 </div>
 <div class="sheet-bg" id="rn-bg" hidden>
   <form class="sheet" id="rn-form" novalidate>
-    <h2>Переименовать место</h2>
+    <h2>Место</h2>
     <div class="note" id="rn-what"></div>
     <label>Новое название
       <input id="rn-name" autocomplete="off">
@@ -644,6 +675,12 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="confirm" id="rn-confirm" hidden>
       <span id="rn-confirm-text"></span>
       <div class="row2"><button type="button" id="rn-confirm-no">Отмена</button><button type="button" class="primary" id="rn-confirm-yes">Объединить</button></div>
+    </div>
+    <button type="button" class="danger" id="rn-del">Удалить место</button>
+    <div class="confirm" id="rn-del-box" hidden>
+      <span id="rn-del-text"></span>
+      <select id="rn-del-to" hidden></select>
+      <div class="row2"><button type="button" id="rn-del-no">Оставить</button><button type="button" class="danger" id="rn-del-yes">Удалить</button></div>
     </div>
     <div class="actions"><div class="right"><button type="button" id="rn-cancel">Отмена</button><button type="submit" class="primary" id="rn-save">Сохранить</button></div></div>
   </form>
@@ -724,7 +761,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <h2>Данные</h2>
     <div class="note" id="d-stat"></div>
     <div class="note" id="d-last"></div>
-    <div class="note">Версия Колчана: <b>1.7.5-beta.24</b></div>
+    <div class="note">Версия Колчана: <b>1.7.6-beta.25</b></div>
     <div class="dataBtns">
       <button type="button" class="primary" id="d-export">Выгрузить файл</button>
       <label>Загрузить файл <span class="hint">заменит всю базу на этом телефоне</span>
@@ -752,7 +789,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="actions"><div class="right"><button type="button" id="d-close">Закрыть</button></div></div>
   </div>
 </div>
-<script>window.__KOLCHAN_VERSION = "1.7.5-beta.24";</script>
+<script>window.__KOLCHAN_VERSION = "1.7.6-beta.25";</script>
 <script>window.__KOLCHAN_AVA = true;</script>
 <script src="local.js"></script>
 <script src="friends.js"></script>
@@ -870,7 +907,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   // Returns {in: bagId} | {place: path} | null when "new" was chosen but left empty
   function readWhere(selEl, newEl) {
     const v = selEl.value;
-    if (v === NEW) { const p = pathStr(norm(newEl.value)); return p ? { place: p, isNew: true } : null; }
+    if (v === NEW) { const p = pathStr(norm(newEl.value).map((x, i) => i ? x : cap(x))); return p ? { place: p, isNew: true } : null; }
     if (v.startsWith("bag:")) return { in: v.slice(4) };
     if (v.startsWith("place:")) return { place: v.slice(6) };
     return { place: "" };
@@ -1877,7 +1914,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   // ---------- rename a storage place (any level), inside the open quiver ----------
   let rnPath = null, rnBag = null;
   const rnTexts = (bag) => {
-    $("rn-bg").querySelector("h2").textContent = bag ? "Переименовать сумку" : "Переименовать место";
+    $("rn-bg").querySelector("h2").textContent = bag ? "Сумка" : "Место";
     $("rn-bg").querySelectorAll(".note")[1].textContent = bag
       ? "Название поменяется везде, а в истории вещей из сумки появится запись о переименовании."
       : "Название поменяется у всех вещей и сумок в этом месте. История перемещений останется как была.";
@@ -1885,6 +1922,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   function openRenameBag(b) {
     rnBag = b; rnPath = null; rnTexts(true);
     $("rn-what").textContent = "Сейчас: " + b.name;
+    rnDelReset(false);
     $("rn-name").value = b.name;
     $("rn-err").hidden = true; $("rn-confirm").hidden = true;
     $("rn-bg").hidden = false; setTimeout(() => { $("rn-name").focus(); $("rn-name").select(); }, 50);
@@ -1892,11 +1930,63 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   function openRename(P) {
     rnPath = P; rnBag = null; rnTexts(false);
     $("rn-what").textContent = "Сейчас: " + pathStr(P);
+    rnDelReset(low(pathStr(P)) === low(TRANSIT));
     $("rn-name").value = P[P.length - 1];
     $("rn-err").hidden = true; $("rn-confirm").hidden = true;
     $("rn-bg").hidden = false; setTimeout(() => { $("rn-name").focus(); $("rn-name").select(); }, 50);
   }
   const closeRename = () => { $("rn-bg").hidden = true; rnPath = null; rnBag = null; };
+  // ---------- удалить место или сумку (из того же окна ✏️): вещи не пропадают ----------
+  function rnDelReset(hide) {
+    $("rn-del").hidden = !!hide; $("rn-del").textContent = rnBag ? "Удалить сумку" : "Удалить место";
+    $("rn-del-box").hidden = true; $("rn-del-to").hidden = true;
+  }
+  $("rn-del").onclick = () => {
+    const sel = $("rn-del-to"), yes = $("rn-del-yes"); sel.hidden = true; sel.textContent = ""; yes.textContent = "Удалить";
+    if (rnBag) {
+      const b = rnBag, n = items.filter(x => x.in === b.id).length;
+      $("rn-del-text").textContent = n ? "Удалить «" + b.name + "»? Вещи из неё (" + n + ") останутся в месте «" + (b.location || "без места") + "»." : "Удалить пустую сумку «" + b.name + "»?";
+    } else {
+      const P = rnPath, n = items.filter(i => !i.in && under(i.parts, P)).length, m = bags.filter(b => under(norm(b.location), P)).length;
+      if (!n && !m) $("rn-del-text").textContent = "Удалить пустое место «" + pathStr(P) + "»?";
+      else {
+        $("rn-del-text").textContent = "Удалить «" + pathStr(P) + "»? Здесь " + n + " " + plural(n, ["вещь", "вещи", "вещей"]) + " и " + m + " " + plural(m, ["сумка", "сумки", "сумок"]) + ". Куда их перенести:";
+        const opt = (v, t) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.appendChild(o); };
+        opt("", "Без места");
+        allPlaces().filter(x => !under(norm(x), P) && low(x) !== low(TRANSIT)).forEach(x => opt(x, x));
+        sel.value = P.length > 1 ? pathStr(P.slice(0, -1)) : "";
+        sel.hidden = false; yes.textContent = "Перенести и удалить";
+      }
+    }
+    $("rn-del-box").hidden = false; $("rn-err").hidden = true; $("rn-confirm").hidden = true;
+  };
+  $("rn-del-no").onclick = () => { $("rn-del-box").hidden = true; };
+  $("rn-del-yes").onclick = async () => {
+    const btn = $("rn-del-yes"); btn.disabled = true;
+    try {
+      if (rnBag) {
+        const b = rnBag;
+        for (const it of items.filter(x => x.in === b.id)) await moveItem(it, { place: b.location || "" }, "сумка «" + b.name + "» удалена");
+        await db.collection("bags").doc(b.id).delete();
+        if (bagAt(cur) === b) cur = norm(b.location || "");
+      } else {
+        const P = rnPath, to = $("rn-del-to").hidden ? "" : $("rn-del-to").value, note = "место «" + pathStr(P) + "» удалено", t = Date.now();
+        for (const it of items.filter(i => !i.in && under(i.parts, P))) await moveItem(it, { place: to }, note);
+        for (const b of bags) {
+          const nl = under(norm(b.location), P), nd = b.dest && under(norm(b.dest), P);
+          if (!nl && !nd) continue;
+          const patch = {};
+          if (nl) { patch.location = to; patch.log = addLog(b.log, { t, from: b.location || "", to, note }); }
+          if (nd) patch.dest = to || null;
+          await setBag(b, patch);
+        }
+        if (P.length === 1) for (const p of places.filter(x => low(x.name) === low(P[0]))) await db.collection("places").doc(p.id).delete();
+        if (under(cur, P)) cur = norm(to);
+      }
+      closeRename(); render();
+    } catch (e) { $("rn-err").textContent = "Не получилось удалить. Попробуй ещё раз."; $("rn-err").hidden = false; }
+    finally { btn.disabled = false; }
+  };
   $("rn-cancel").onclick = closeRename;
   $("rn-confirm-no").onclick = () => { $("rn-confirm").hidden = true; };
   $("rn-bg").addEventListener("click", (e) => { if (e.target === $("rn-bg")) closeRename(); });
@@ -2079,6 +2169,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   // ---------- render ----------
   function render() {
     siriIndex();
+    if (!ob && loaded) setTimeout(obCheck, 300);
     // inside a bag of a trip: no search (and no «+ Добавить «…»» from it)
     const tripBagView = !!curTrip() && !!bagAt(cur) && !showMissing;
     if (tripBagView && $("q").value) $("q").value = "";
@@ -2166,7 +2257,13 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       mk2("Изменить", () => openItemPick("edit", b));
       mk2("Принять", () => openItemPick("recv", b), "primary");
       row.append(top, meta, btns);
-      trl.appendChild(row);
+      // свайп влево → «Отменить»: сумка возвращается туда, откуда уехала
+      const sw = document.createElement("div"); sw.className = "tr-sw";
+      const un = document.createElement("button"); un.type = "button"; un.className = "tr-undo"; un.textContent = "Отменить"; un.tabIndex = -1;
+      un.setAttribute("aria-label", "Отменить перемещение «" + b.name + "»");
+      un.onclick = () => cancelTransit(b, sent);
+      sw.append(un, row); trSwipe(sw, row);
+      trl.appendChild(sw);
     });
 
     // place chips (children of current level); while searching, only where matches are
@@ -2753,6 +2850,33 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   $("mv-done").onclick = () => { $("mv-q").blur(); $("mv-items").classList.remove("typing"); };
   $("mv-list").addEventListener("touchstart", () => { if (document.activeElement === $("mv-q")) $("mv-q").blur(); }, { passive: true });
 
+  async function cancelTransit(b, sent) {
+    const back = sent && sent.from && low(sent.from) !== low(TRANSIT) ? sent.from : "";
+    await setBag(b, { location: back, dest: null, log: addLog(b.log, { t: Date.now(), from: b.location || "", to: back, note: "отменил перемещение" }) });
+    render();
+  }
+  // открыта только одна «Отменить»: касание любого другого места (другой строки, кнопки, экрана) её закрывает
+  let trOpenClose = null;
+  document.addEventListener("pointerdown", (e) => { if (trOpenClose && !e.target.closest(".tr-sw.is-open")) trOpenClose(); }, true);
+  function trSwipe(sw, row) {
+    const W = 112; let x0 = 0, y0 = 0, dx = 0, on = false, open = false, id = null, dragged = false;
+    const set = (x, anim) => { row.style.transition = anim ? "" : "none"; row.style.transform = x ? "translateX(" + x + "px)" : ""; };
+    const close = () => { open = false; set(0, true); sw.classList.remove("is-open"); if (trOpenClose === close) trOpenClose = null; };
+    row.addEventListener("pointerdown", (e) => { if (e.target.closest("button")) return; id = e.pointerId; x0 = e.clientX; y0 = e.clientY; dx = open ? -W : 0; on = false; });
+    row.addEventListener("pointermove", (e) => {
+      if (e.pointerId !== id) return;
+      const mx = e.clientX - x0, my = e.clientY - y0;
+      if (!on) { if (Math.abs(mx) > 8 && Math.abs(mx) > Math.abs(my) * 1.5) { on = true; try { row.setPointerCapture(id); } catch (er) {} } else if (Math.abs(my) > 10) { id = null; return; } else return; }
+      dx = Math.max(-W - 30, Math.min(0, (open ? -W : 0) + mx)); set(dx, false);
+    });
+    const end = (e) => {
+      if (e.pointerId !== id) return; id = null; if (!on) return;
+      open = dx < -W / 2; set(open ? -W : 0, true); dragged = true;
+      if (open) { if (trOpenClose && trOpenClose !== close) trOpenClose(); trOpenClose = close; sw.classList.add("is-open"); } else close(); setTimeout(() => { dragged = false; }, 50);
+    };
+    row.addEventListener("pointerup", end); row.addEventListener("pointercancel", end);
+    row.addEventListener("click", (e) => { if (dragged) { dragged = false; e.stopPropagation(); e.preventDefault(); return; } if (open && !e.target.closest("button")) { close(); e.stopPropagation(); } }, true);
+  }
   async function setBag(b, patch) {
     const d = { name: b.name, location: b.location || "", order: b.order || 0, log: b.log || [], dest: b.dest || null };
     Object.assign(d, patch);
@@ -2978,6 +3102,110 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     } catch (ex) { er.textContent = "Не получилось добавить сумку. Попробуй ещё раз."; er.hidden = false; }
   });
   render();
+
+  // ---------- первый запуск: два места → три вещи → сумка (по желанию) ----------
+  const OB_PLACES = ["Дом", "Дача", "Гараж", "Работа", "У родителей"];
+  var ob = null, obBusy = false;   // var: render() зовёт obCheck раньше этой строки
+  const obK = () => window.__kolchan;
+  const obSave = (st) => obK() && obK().put("meta", Object.assign({ key: "onboard" }, st));
+  const obEv = (step) => { if (window.__kolchanEvent) window.__kolchanEvent("onboard", { step }); };
+  const mainHas = () => rawItems.some(r => QOF(r) === MAINQ) || rawPlaces.some(r => QOF(r) === MAINQ) || rawBags.some(r => QOF(r) === MAINQ);
+  async function obCheck() {
+    if (ob || obBusy || !loaded || !obK()) return;
+    obBusy = true;
+    try {
+      const m = await obK().get("meta", "onboard");
+      if (m && m.done) return;
+      // другие окна первого запуска (приветствие, экран «Домой», вход) — сначала они
+      if (["wel-bg", "inst-bg", "acc-bg"].some(id => { const e = $(id); return e && !e.hidden; })) { setTimeout(obCheck, 700); return; }
+      // с аккаунтом — ждём первую синхронизацию: вещи могли уже быть в облаке
+      const acc = window.__kolchanAccount && window.__kolchanAccount();
+      if (acc) { const cb = await obK().get("meta", "cloudBase"); if (!(cb && cb.user)) { setTimeout(obCheck, 1000); return; } }
+      if (m && m.step) { obOpen(m); return; }
+      if (mainHas()) { await obSave({ done: true }); return; }
+      obOpen({ step: 1, places: [] });
+    } finally { obBusy = false; }
+  }
+  function obOpen(st) {
+    ob = Object.assign({ step: 1, places: [] }, st);
+    if (curQ !== MAINQ) switchQ(MAINQ);
+    $("ob-bg").hidden = false; obDraw(); obEv("start_" + ob.step);
+  }
+  async function obFinish(how) {
+    await obSave({ done: true }); obEv("done_" + how);
+    ob = null; $("ob-bg").hidden = true; render();
+    const a = $("add"); a.classList.remove("ob-pulse"); void a.offsetWidth; a.classList.add("ob-pulse");
+  }
+  const obBtn = (text, cls, on) => { const b = document.createElement("button"); b.type = "button"; b.textContent = text; if (cls) b.className = cls; b.onclick = on; return b; };
+  function obErr(t) { $("ob-err").textContent = t || ""; $("ob-err").hidden = !t; }
+  const obClean = (v) => cap(v.replace(/\//g, " ").replace(/\s+/g, " ").trim());
+  function obDraw() {
+    const body = $("ob-body"), act = $("ob-act"); body.textContent = ""; act.textContent = ""; obErr("");
+    [...$("ob-dots").children].forEach((d, i) => d.classList.toggle("on", i < ob.step));
+    if (ob.step === 1) {
+      $("ob-title").textContent = "Где ты хранишь вещи?";
+      $("ob-sub").textContent = "Назови два места — например, где живёшь и где бываешь часто. Потом можно добавить ещё.";
+      const ins = [0, 1].map(i => { const x = document.createElement("input"); x.id = "ob-p" + (i + 1); x.placeholder = i ? "Второе место" : "Первое место"; x.autocomplete = "off"; x.value = ob.places[i] || ""; body.appendChild(x); return x; });
+      const chips = document.createElement("div"); chips.className = "ob-chips";
+      OB_PLACES.forEach(n => chips.appendChild(obBtn(n, "", () => { const e = ins.find(x => !x.value.trim()) || ins[1]; e.value = n; upd(); })));
+      body.appendChild(chips);
+      const next = obBtn("Дальше", "primary", async () => {
+        const a = obClean(ins[0].value), b = obClean(ins[1].value);
+        if (!a || !b) return obErr("Нужно два места.");
+        if (low(a) === low(b)) return obErr("Места должны быть разными.");
+        next.disabled = true;
+        try { await ensurePlace(a); await new Promise(r => setTimeout(r, 50)); await ensurePlace(b); } catch (e) { next.disabled = false; return obErr("Не получилось сохранить. Попробуй ещё раз."); }
+        ob.places = [a, b]; ob.step = 2; await obSave({ step: 2, places: ob.places }); obEv("places"); obDraw();
+      });
+      const upd = () => { next.disabled = !(ins[0].value.trim() && ins[1].value.trim()); };
+      ins.forEach(x => x.addEventListener("input", upd)); upd();
+      act.appendChild(next);
+    } else if (ob.step === 2) {
+      $("ob-title").textContent = "Что где лежит?";
+      $("ob-sub").textContent = "Добавь три вещи и выбери, где каждая лежит.";
+      const rows = [0, 1, 2].map(i => {
+        const box = document.createElement("div"); box.className = "ob-item";
+        const x = document.createElement("input"); x.id = "ob-i" + (i + 1); x.placeholder = ["Например, пальто", "Например, дрель", "Например, палатка"][i]; x.autocomplete = "off";
+        const g = document.createElement("div"); g.className = "ex-for"; g.setAttribute("role", "radiogroup");
+        const r = { x, where: ob.places[i === 0 ? 0 : i === 1 ? 1 : 0] };
+        const draw = () => { g.textContent = ""; ob.places.forEach(pn => { const b = obBtn(pn, r.where === pn ? "on" : "", () => { r.where = pn; draw(); }); b.setAttribute("role", "radio"); b.setAttribute("aria-checked", String(r.where === pn)); g.appendChild(b); }); };
+        draw(); box.append(x, g); body.appendChild(box); return r;
+      });
+      const next = obBtn("Дальше", "primary", async () => {
+        if (rows.some(r => !r.x.value.trim())) return obErr("Заполни все три вещи.");
+        next.disabled = true;
+        try {
+          const t = Date.now();
+          for (let i = 0; i < 3; i++) {
+            const place = rows[i].where, name = obClean(rows[i].x.value);
+            await db.collection("items").doc().set({ name, place, parts: norm(place), in: null, qty: "", note: "", photo: null, missing: false, updatedAt: t + i, log: [{ t: t + i, kind: "move", to: place, in: null }] });
+          }
+        } catch (e) { next.disabled = false; return obErr("Не получилось сохранить. Попробуй ещё раз."); }
+        ob.step = 3; await obSave({ step: 3, places: ob.places }); obEv("items"); obDraw();
+      });
+      const upd = () => { next.disabled = rows.some(r => !r.x.value.trim()); };
+      rows.forEach(r => r.x.addEventListener("input", upd)); upd();
+      act.appendChild(next);
+    } else {
+      $("ob-title").textContent = "Есть рюкзак или чехол?";
+      $("ob-sub").textContent = "Сумка — то, что носишь с собой и в чём перекладываешь вещи. Место — где вещь лежит, когда её не носишь. Сумку можно добавить и потом.";
+      const x = document.createElement("input"); x.id = "ob-b"; x.placeholder = "Например, рюкзак"; x.autocomplete = "off";
+      const g = document.createElement("div"); g.className = "ex-for"; let where = ob.places[0];
+      const draw = () => { g.textContent = ""; ob.places.forEach(pn => g.appendChild(obBtn(pn, where === pn ? "on" : "", () => { where = pn; draw(); }))); };
+      draw();
+      const lbl = document.createElement("div"); lbl.className = "ob-sub"; lbl.textContent = "Где сумка сейчас:";
+      body.append(x, lbl, g);
+      const add = obBtn("Добавить сумку", "primary", async () => {
+        const name = obClean(x.value);
+        if (!name) return obErr("Напиши название сумки или нажми «Позже».");
+        add.disabled = true;
+        try { const t = Date.now(), order = bags.reduce((m, b) => Math.max(m, b.order || 0), 0) + 10; await db.collection("bags").doc().set({ name, location: where, order, log: [{ t, from: "", to: where }] }); }
+        catch (e) { add.disabled = false; return obErr("Не получилось сохранить. Попробуй ещё раз."); }
+        obFinish("bag");
+      });
+      act.append(add, obBtn("Позже", "", () => obFinish("later")));
+    }
+  }
 
   // ---------- data ----------
   (async () => {

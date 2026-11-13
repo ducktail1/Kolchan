@@ -148,9 +148,9 @@ const track = (opened, p) => { opened.push(p); return p; };
     for (const n of ["маска", "очки"]) { await p.click("#add"); await sleep(200); await p.click("#add-item"); await p.fill("#f-name", n); await p.selectOption("#f-where", "bag:" + bag.id); await p.click("#f-save"); await sleep(400); }
     if (!(await p.isVisible("#bags"))) { await p.click("#sec-bags"); await sleep(300); }
     await p.locator("#bags button.item", { hasText: "Рюкзак" }).click(); await sleep(400);
-    await p.click("#bag-del"); await sleep(200);
-    check((await p.textContent("#bag-del-text")).includes("(2)"), "в подтверждении нет числа вещей: " + await p.textContent("#bag-del-text"));
-    await p.click("#bag-del-ok"); await sleep(600);
+    await p.click("#crumbs .rn"); await sleep(300); await p.click("#rn-del"); await sleep(200);
+    check((await p.textContent("#rn-del-text")).includes("(2)"), "в подтверждении нет числа вещей: " + await p.textContent("#rn-del-text"));
+    await p.click("#rn-del-yes"); await sleep(600);
     const its = await all(p, "items"), bs = await all(p, "bags");
     check(!bs.some(b => b.name === "Рюкзак"), "сумка не удалилась");
     check(its.length === 2 && its.every(i => !i.in && i.place === "Дача"), "вещи не в месте «Дача»: " + JSON.stringify(its.map(i => [i.name, i.in, i.place])));
@@ -158,10 +158,56 @@ const track = (opened, p) => { opened.push(p); return p; };
     await p.click("#home-btn"); await sleep(400);
     if (!(await p.isVisible("#bags"))) { await p.click("#sec-bags"); await sleep(300); }
     await p.locator("#bags button.item", { hasText: "Чехол" }).click(); await sleep(400);
-    await p.click("#bag-del"); await sleep(200);
-    check((await p.textContent("#bag-del-text")).includes("пустую"), "для пустой сумки другой текст: " + await p.textContent("#bag-del-text"));
-    await p.click("#bag-del-ok"); await sleep(600);
+    await p.click("#crumbs .rn"); await sleep(300); await p.click("#rn-del"); await sleep(200);
+    check((await p.textContent("#rn-del-text")).includes("пустую"), "для пустой сумки другой текст: " + await p.textContent("#rn-del-text"));
+    await p.click("#rn-del-yes"); await sleep(600);
     check((await all(p, "bags")).length === 0 && (await all(p, "items")).length === 2, "пустая сумка не удалилась или пропали вещи");
+  });
+
+  await scenario("Удаление места: вещи и сумки переезжают, куда выбрал; пустое удаляется; отмена перемещения свайпом", async (o) => {
+    mock = createMock();
+    const p = track(o, await phone()); await p.click("#acc-local-go"); await sleep(400); await closeSheets(p);
+    await p.evaluate(async () => {
+      const K = window.__kolchan, t = Date.now();
+      for (const [id, name] of [["pl1", "Дача"], ["pl2", "Гараж"], ["pl3", "Сарай"]]) await K.put("places", { id, name, order: 0 });
+      await K.put("bags", { id: "b1", name: "Рюкзак", location: "Дача", dest: null, order: 0, log: [] });
+      await K.put("bags", { id: "b2", name: "Чехол", location: "В пути", dest: "Сарай", order: 0, log: [{ t: t - 1000, from: "Гараж", to: "В пути", note: "→ Сарай" }] });
+      const it = (id, name, place, inb) => K.put("items", { id, name, place, parts: place ? place.split(" / ") : [], in: inb || null, qty: "", note: "", photo: null, missing: false, updatedAt: t, log: [] });
+      await it("i1", "Дрель", "Дача / Шкаф"); await it("i2", "Маска", "Дача", "b1"); await it("i3", "Доска", "Гараж");
+    });
+    await p.reload(); await sleep(2500); await closeSheets(p);
+    // место «Дача» с вещью и сумкой → в «Гараж»
+    if (!(await p.isVisible("#chips button"))) { await p.click("#sec-places"); await sleep(300); }
+    await p.locator("#chips button", { hasText: "Дача" }).first().click(); await sleep(400);
+    await p.click("#crumbs .rn"); await sleep(300); await p.click("#rn-del"); await sleep(200);
+    check(await p.isVisible("#rn-del-to"), "у непустого места нет выбора, куда перенести");
+    check((await p.textContent("#rn-del-text")).includes("1 вещь и 1 сумка"), "текст: " + await p.textContent("#rn-del-text"));
+    await p.selectOption("#rn-del-to", "Гараж"); await p.click("#rn-del-yes"); await sleep(700);
+    const its = await all(p, "items"), bs = await all(p, "bags"), at = Object.fromEntries(its.map(i => [i.name, i.in ? "в " + i.in : i.place]));
+    check(at["Дрель"] === "Гараж" && at["Маска"] === "в b1" && at["Доска"] === "Гараж", "вещи: " + JSON.stringify(at));
+    check(bs.find(b => b.id === "b1").location === "Гараж", "сумка не переехала: " + bs.find(b => b.id === "b1").location);
+    check(!(await names(p, "places")).includes("Дача"), "место «Дача» не удалилось");
+    check((its.find(i => i.name === "Дрель").log || []).some(e => e.kind === "move" && /удалено/.test(e.note || "")), "в истории нет записи");
+    // пустое место — без выбора
+    await p.click("#home-btn"); await sleep(300);
+    if (!(await p.isVisible("#chips button"))) { await p.click("#sec-places"); await sleep(300); }
+    await p.locator("#chips button", { hasText: "Сарай" }).first().click(); await sleep(400);
+    await p.click("#crumbs .rn"); await sleep(300); await p.click("#rn-del"); await sleep(200);
+    check(!(await p.isVisible("#rn-del-to")) && (await p.textContent("#rn-del-text")).includes("пустое"), "пустое место: " + await p.textContent("#rn-del-text"));
+    await p.click("#rn-del-yes"); await sleep(600);
+    check(!(await names(p, "places")).includes("Сарай"), "пустое место не удалилось");
+    // перемещение «Чехол» (Гараж → В пути → Сарай): свайп влево → «Отменить» → снова в «Гараж»
+    await p.click("#home-btn"); await sleep(300);
+    if (!(await p.isVisible("#tr-list"))) { await p.click("#sec-tr"); await sleep(300); }
+    const box = await p.locator("#tr-list .tr-sw .tr-row").first().boundingBox();
+    // настоящий свайп пальцем (touch-события, как на iPhone)
+    const cdp = await p.ctx.newCDPSession(p), T = (type, x) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y: box.y + 20 }] });
+    let x = box.x + box.width - 30; await T("touchStart", x); for (let i = 0; i < 10; i++) { x -= 15; await T("touchMove", x); await sleep(16); } await T("touchEnd"); await sleep(400);
+    check(await p.locator("#tr-list .tr-undo").first().isVisible(), "после свайпа нет кнопки «Отменить»");
+    await p.locator("#tr-list .tr-undo").first().click(); await sleep(600);
+    const b2 = (await all(p, "bags")).find(b => b.id === "b2");
+    check(b2.location === "Гараж" && !b2.dest, "перемещение не отменилось: " + b2.location + " → " + b2.dest);
+    check((b2.log || []).some(e => /отменил/.test(e.note || "")), "в истории сумки нет отмены");
   });
 
   // ---------- 2. Колчаны ----------

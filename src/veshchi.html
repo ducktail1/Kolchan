@@ -58,6 +58,12 @@ input:placeholder-shown + .clr { display: none; }
 .tr-name { font-weight: 600; overflow-wrap: anywhere; }
 .tr-meta { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tr-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.tr-sw { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); }
+.tr-sw:last-child { border-bottom: 0; }
+.tr-sw .tr-row { position: relative; background: var(--surface); border-bottom: 0; touch-action: pan-y; transition: transform .2s ease; }
+.tr-sw .tr-undo { position: absolute; top: 0; right: 0; bottom: 0; width: 112px; border: 0; border-radius: 0; background: #c9533f; color: #fff; font-weight: 600; }
+#rn-del { width: 100%; }
+#rn-del-to { width: 100%; margin-top: 8px; }
 .tr-btns button { padding: 8px 12px; font-size: 14px; }
 h1 { font-family: var(--font-display); font-weight: 600; font-size: 22px; margin: 0; letter-spacing: -.01em; }
 h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0; font-weight: 600; }
@@ -383,7 +389,6 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       <button type="button" id="bag-check">Сверить содержимое</button>
       <button type="button" id="bag-qmove" hidden>В другой колчан</button>
       <button type="button" id="bag-unpack">Выложить всё</button>
-      <button type="button" class="danger" id="bag-del">Удалить сумку</button>
     </div>
     <div class="search" id="bag-move-form" hidden>
       <input id="bag-move-note" placeholder="Заметка к перевозке, например «СДЭК до Сочи»" autocomplete="off" style="flex-basis:100%">
@@ -396,11 +401,6 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       <span class="where" id="bag-unpack-text"></span>
       <button type="button" class="primary" id="bag-unpack-ok">Выложить</button>
       <button type="button" id="bag-unpack-cancel">Отмена</button>
-    </div>
-    <div id="bag-del-form" hidden class="search">
-      <span class="where" id="bag-del-text"></span>
-      <button type="button" class="danger" id="bag-del-ok">Удалить</button>
-      <button type="button" id="bag-del-cancel">Отмена</button>
     </div>
   </div>
 
@@ -643,7 +643,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
 </div>
 <div class="sheet-bg" id="rn-bg" hidden>
   <form class="sheet" id="rn-form" novalidate>
-    <h2>Переименовать место</h2>
+    <h2>Место</h2>
     <div class="note" id="rn-what"></div>
     <label>Новое название
       <input id="rn-name" autocomplete="off">
@@ -653,6 +653,12 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="confirm" id="rn-confirm" hidden>
       <span id="rn-confirm-text"></span>
       <div class="row2"><button type="button" id="rn-confirm-no">Отмена</button><button type="button" class="primary" id="rn-confirm-yes">Объединить</button></div>
+    </div>
+    <button type="button" class="danger" id="rn-del">Удалить место</button>
+    <div class="confirm" id="rn-del-box" hidden>
+      <span id="rn-del-text"></span>
+      <select id="rn-del-to" hidden></select>
+      <div class="row2"><button type="button" id="rn-del-no">Оставить</button><button type="button" class="danger" id="rn-del-yes">Удалить</button></div>
     </div>
     <div class="actions"><div class="right"><button type="button" id="rn-cancel">Отмена</button><button type="submit" class="primary" id="rn-save">Сохранить</button></div></div>
   </form>
@@ -1846,7 +1852,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   // ---------- rename a storage place (any level), inside the open quiver ----------
   let rnPath = null, rnBag = null;
   const rnTexts = (bag) => {
-    $("rn-bg").querySelector("h2").textContent = bag ? "Переименовать сумку" : "Переименовать место";
+    $("rn-bg").querySelector("h2").textContent = bag ? "Сумка" : "Место";
     $("rn-bg").querySelectorAll(".note")[1].textContent = bag
       ? "Название поменяется везде, а в истории вещей из сумки появится запись о переименовании."
       : "Название поменяется у всех вещей и сумок в этом месте. История перемещений останется как была.";
@@ -1854,6 +1860,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   function openRenameBag(b) {
     rnBag = b; rnPath = null; rnTexts(true);
     $("rn-what").textContent = "Сейчас: " + b.name;
+    rnDelReset(false);
     $("rn-name").value = b.name;
     $("rn-err").hidden = true; $("rn-confirm").hidden = true;
     $("rn-bg").hidden = false; setTimeout(() => { $("rn-name").focus(); $("rn-name").select(); }, 50);
@@ -1861,11 +1868,63 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   function openRename(P) {
     rnPath = P; rnBag = null; rnTexts(false);
     $("rn-what").textContent = "Сейчас: " + pathStr(P);
+    rnDelReset(low(pathStr(P)) === low(TRANSIT));
     $("rn-name").value = P[P.length - 1];
     $("rn-err").hidden = true; $("rn-confirm").hidden = true;
     $("rn-bg").hidden = false; setTimeout(() => { $("rn-name").focus(); $("rn-name").select(); }, 50);
   }
   const closeRename = () => { $("rn-bg").hidden = true; rnPath = null; rnBag = null; };
+  // ---------- удалить место или сумку (из того же окна ✏️): вещи не пропадают ----------
+  function rnDelReset(hide) {
+    $("rn-del").hidden = !!hide; $("rn-del").textContent = rnBag ? "Удалить сумку" : "Удалить место";
+    $("rn-del-box").hidden = true; $("rn-del-to").hidden = true;
+  }
+  $("rn-del").onclick = () => {
+    const sel = $("rn-del-to"), yes = $("rn-del-yes"); sel.hidden = true; sel.textContent = ""; yes.textContent = "Удалить";
+    if (rnBag) {
+      const b = rnBag, n = items.filter(x => x.in === b.id).length;
+      $("rn-del-text").textContent = n ? "Удалить «" + b.name + "»? Вещи из неё (" + n + ") останутся в месте «" + (b.location || "без места") + "»." : "Удалить пустую сумку «" + b.name + "»?";
+    } else {
+      const P = rnPath, n = items.filter(i => !i.in && under(i.parts, P)).length, m = bags.filter(b => under(norm(b.location), P)).length;
+      if (!n && !m) $("rn-del-text").textContent = "Удалить пустое место «" + pathStr(P) + "»?";
+      else {
+        $("rn-del-text").textContent = "Удалить «" + pathStr(P) + "»? Здесь " + n + " " + plural(n, ["вещь", "вещи", "вещей"]) + " и " + m + " " + plural(m, ["сумка", "сумки", "сумок"]) + ". Куда их перенести:";
+        const opt = (v, t) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.appendChild(o); };
+        opt("", "Без места");
+        allPlaces().filter(x => !under(norm(x), P) && low(x) !== low(TRANSIT)).forEach(x => opt(x, x));
+        sel.value = P.length > 1 ? pathStr(P.slice(0, -1)) : "";
+        sel.hidden = false; yes.textContent = "Перенести и удалить";
+      }
+    }
+    $("rn-del-box").hidden = false; $("rn-err").hidden = true; $("rn-confirm").hidden = true;
+  };
+  $("rn-del-no").onclick = () => { $("rn-del-box").hidden = true; };
+  $("rn-del-yes").onclick = async () => {
+    const btn = $("rn-del-yes"); btn.disabled = true;
+    try {
+      if (rnBag) {
+        const b = rnBag;
+        for (const it of items.filter(x => x.in === b.id)) await moveItem(it, { place: b.location || "" }, "сумка «" + b.name + "» удалена");
+        await db.collection("bags").doc(b.id).delete();
+        if (bagAt(cur) === b) cur = norm(b.location || "");
+      } else {
+        const P = rnPath, to = $("rn-del-to").hidden ? "" : $("rn-del-to").value, note = "место «" + pathStr(P) + "» удалено", t = Date.now();
+        for (const it of items.filter(i => !i.in && under(i.parts, P))) await moveItem(it, { place: to }, note);
+        for (const b of bags) {
+          const nl = under(norm(b.location), P), nd = b.dest && under(norm(b.dest), P);
+          if (!nl && !nd) continue;
+          const patch = {};
+          if (nl) { patch.location = to; patch.log = addLog(b.log, { t, from: b.location || "", to, note }); }
+          if (nd) patch.dest = to || null;
+          await setBag(b, patch);
+        }
+        if (P.length === 1) for (const p of places.filter(x => low(x.name) === low(P[0]))) await db.collection("places").doc(p.id).delete();
+        if (under(cur, P)) cur = norm(to);
+      }
+      closeRename(); render();
+    } catch (e) { $("rn-err").textContent = "Не получилось удалить. Попробуй ещё раз."; $("rn-err").hidden = false; }
+    finally { btn.disabled = false; }
+  };
   $("rn-cancel").onclick = closeRename;
   $("rn-confirm-no").onclick = () => { $("rn-confirm").hidden = true; };
   $("rn-bg").addEventListener("click", (e) => { if (e.target === $("rn-bg")) closeRename(); });
@@ -2136,7 +2195,13 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       mk2("Изменить", () => openItemPick("edit", b));
       mk2("Принять", () => openItemPick("recv", b), "primary");
       row.append(top, meta, btns);
-      trl.appendChild(row);
+      // свайп влево → «Отменить»: сумка возвращается туда, откуда уехала
+      const sw = document.createElement("div"); sw.className = "tr-sw";
+      const un = document.createElement("button"); un.type = "button"; un.className = "tr-undo"; un.textContent = "Отменить"; un.tabIndex = -1;
+      un.setAttribute("aria-label", "Отменить перемещение «" + b.name + "»");
+      un.onclick = () => cancelTransit(b, sent);
+      sw.append(un, row); trSwipe(sw, row);
+      trl.appendChild(sw);
     });
 
     // place chips (children of current level); while searching, only where matches are
@@ -2352,7 +2417,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   $("bag-move").onclick = () => {
     const b = bagAt(cur); if (!b) return;
     fillWhere($("bag-move-to"), $("bag-move-new"), { value: "place:" + (b.location || "") });
-    $("bag-move-form").hidden = false; $("bag-unpack-form").hidden = true; $("bag-del-form").hidden = true;
+    $("bag-move-form").hidden = false; $("bag-unpack-form").hidden = true;
   };
   $("bag-move-cancel").onclick = () => { $("bag-move-form").hidden = true; };
   $("bag-move-ok").onclick = async () => {
@@ -2371,25 +2436,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   $("bag-unpack").onclick = () => {
     const b = bagAt(cur); if (!b) return;
     $("bag-unpack-text").textContent = "Все вещи из «" + b.name + "» окажутся просто в месте «" + (b.location || "?") + "».";
-    $("bag-unpack-form").hidden = false; $("bag-move-form").hidden = true; $("bag-del-form").hidden = true;
-  };
-  // удалить сумку: вещи из неё не пропадают — остаются в месте, где лежала сумка
-  $("bag-del").onclick = () => {
-    const b = bagAt(cur); if (!b) return;
-    const n = items.filter(x => x.in === b.id).length, at = b.location || "без места";
-    $("bag-del-text").textContent = n ? "Удалить «" + b.name + "»? Вещи из неё (" + n + ") останутся в месте «" + at + "»." : "Удалить пустую сумку «" + b.name + "»?";
-    $("bag-del-form").hidden = false; $("bag-move-form").hidden = true; $("bag-unpack-form").hidden = true;
-  };
-  $("bag-del-cancel").onclick = () => { $("bag-del-form").hidden = true; };
-  $("bag-del-ok").onclick = async () => {
-    const b = bagAt(cur); if (!b) return;
-    const btn = $("bag-del-ok"); btn.disabled = true;
-    try {
-      for (const it of items.filter(x => x.in === b.id)) await moveItem(it, { place: b.location || "" });
-      await db.collection("bags").doc(b.id).delete();
-      cur = norm(b.location || ""); $("bag-del-form").hidden = true; render();
-    } catch (e) { setStatus("Не получилось удалить сумку. Попробуй ещё раз."); }
-    finally { btn.disabled = false; }
+    $("bag-unpack-form").hidden = false; $("bag-move-form").hidden = true;
   };
   $("bag-unpack-cancel").onclick = () => { $("bag-unpack-form").hidden = true; };
   $("bag-unpack-ok").onclick = async () => {
@@ -2741,6 +2788,28 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   $("mv-done").onclick = () => { $("mv-q").blur(); $("mv-items").classList.remove("typing"); };
   $("mv-list").addEventListener("touchstart", () => { if (document.activeElement === $("mv-q")) $("mv-q").blur(); }, { passive: true });
 
+  async function cancelTransit(b, sent) {
+    const back = sent && sent.from && low(sent.from) !== low(TRANSIT) ? sent.from : "";
+    await setBag(b, { location: back, dest: null, log: addLog(b.log, { t: Date.now(), from: b.location || "", to: back, note: "отменил перемещение" }) });
+    render();
+  }
+  function trSwipe(sw, row) {
+    const W = 112; let x0 = 0, y0 = 0, dx = 0, on = false, open = false, id = null, dragged = false;
+    const set = (x, anim) => { row.style.transition = anim ? "" : "none"; row.style.transform = x ? "translateX(" + x + "px)" : ""; };
+    row.addEventListener("pointerdown", (e) => { if (e.target.closest("button")) return; id = e.pointerId; x0 = e.clientX; y0 = e.clientY; dx = open ? -W : 0; on = false; });
+    row.addEventListener("pointermove", (e) => {
+      if (e.pointerId !== id) return;
+      const mx = e.clientX - x0, my = e.clientY - y0;
+      if (!on) { if (Math.abs(mx) > 8 && Math.abs(mx) > Math.abs(my) * 1.5) { on = true; try { row.setPointerCapture(id); } catch (er) {} } else if (Math.abs(my) > 10) { id = null; return; } else return; }
+      dx = Math.max(-W - 30, Math.min(0, (open ? -W : 0) + mx)); set(dx, false);
+    });
+    const end = (e) => {
+      if (e.pointerId !== id) return; id = null; if (!on) return;
+      open = dx < -W / 2; set(open ? -W : 0, true); dragged = true; setTimeout(() => { dragged = false; }, 50);
+    };
+    row.addEventListener("pointerup", end); row.addEventListener("pointercancel", end);
+    row.addEventListener("click", (e) => { if (dragged) { dragged = false; e.stopPropagation(); e.preventDefault(); return; } if (open && !e.target.closest("button")) { open = false; set(0, true); e.stopPropagation(); } }, true);
+  }
   async function setBag(b, patch) {
     const d = { name: b.name, location: b.location || "", order: b.order || 0, log: b.log || [], dest: b.dest || null };
     Object.assign(d, patch);

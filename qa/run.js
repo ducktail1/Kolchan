@@ -50,6 +50,7 @@ async function sync(p) {
 async function closeSheets(p) { await p.evaluate(() => document.querySelectorAll(".sheet-bg").forEach(b => { if (b.id !== "acc-bg") b.hidden = true; })); }
 
 async function scenario(name, fn) {
+  if (process.env.ONLY && !name.includes(process.env.ONLY)) return;   // ONLY=часть_названия node run.js
   const t0 = Date.now(); let ok = true, err = "";
   const opened = [];
   try { await fn(opened); if (opened.skip) err = "пропущен: " + opened.skip; } catch (e) { ok = false; err = String(e.message || e).split("\n")[0].slice(0, 300); }
@@ -214,6 +215,32 @@ const track = (opened, p) => { opened.push(p); return p; };
     const b2 = (await all(p, "bags")).find(b => b.id === "b2");
     check(b2.location === "Гараж" && !b2.dest, "перемещение не отменилось: " + b2.location + " → " + b2.dest);
     check((b2.log || []).some(e => /отменил/.test(e.note || "")), "в истории сумки нет отмены");
+  });
+
+  await scenario("Алиса: Яндекс прислал войти → «Подключить» → обратно в Яндекс с кодом; в аккаунте «Отключить»", async (o) => {
+    mock = createMock(); mock.addUser("a1", "a1@k.ru", "pw1234", "Алексей");
+    const RED = "https://social.yandex.net/broker/redirect";
+    const q = "?alice=1&redirect_uri=" + encodeURIComponent(RED) + "&state=ST7";
+    // без входа: сначала вход, потом окно «Подключить Алису»
+    const p = track(o, await phone({ beta: true, hash: q }));
+    await p.ctx.route(u => u.hostname === "social.yandex.net", r => r.fulfill({ status: 200, contentType: "text/html", body: "<title>yandex</title>ok" }));
+    await p.goto("about:blank"); await p.goto(BASE + "beta/" + q); await sleep(2000);
+    check(await p.isVisible("#acc-alice-note"), "на экране входа нет подсказки про Алису");
+    check(!(await p.evaluate(() => location.search)), "параметры Алисы остались в адресе");
+    await p.fill("#acc-mail-in", "a1@k.ru"); await p.fill("#acc-pass", "pw1234"); await p.click("#acc-go"); await sleep(2500);
+    check(await p.isVisible("#alice-bg"), "после входа нет окна «Подключить Алису»");
+    check((await p.textContent("#alice-who")).includes("Алексей"), "в окне не видно аккаунта");
+    await Promise.all([p.waitForURL(/social\.yandex\.net/, { timeout: 8000 }), p.click("#alice-yes")]);
+    const back = new URL(p.url());
+    check(back.searchParams.get("code") && back.searchParams.get("state") === "ST7", "в Яндекс вернулись без кода или state: " + p.url());
+    check(mock.db.alice_links.some(l => l.user_id === "a1"), "привязка не создалась");
+    // в аккаунте видно «Алиса подключена», «Отключить» убирает привязку
+    await p.goto(BASE + "beta/"); await sleep(2500); await closeSheets(p);
+    await p.evaluate(() => { const b = document.getElementById("acc-open"); if (b) b.click(); }); await sleep(800);
+    await p.waitForSelector("#acc-alice:not([hidden])", { timeout: 5000 }).catch(() => {});
+    check(await p.isVisible("#acc-alice"), "в аккаунте не видно «Алиса подключена»");
+    await p.click("#acc-alice-off"); await sleep(600);
+    check(!mock.db.alice_links.some(l => l.user_id === "a1") && !(await p.isVisible("#acc-alice")), "«Отключить» не сработало");
   });
 
   // ---------- 2. Колчаны ----------

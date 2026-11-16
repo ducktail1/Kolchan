@@ -16,7 +16,7 @@
 
   // ---------- auth (Supabase GoTrue over plain fetch) ----------
   let session = null;   // { access_token, refresh_token, expires_at, user: { id, email } }
-  const saveSession = async (s) => { const was = session; session = s; if (s && !was && window.__kolchanEvent) window.__kolchanEvent("signin", { how: /@tg\.kolchan\.app$/i.test((s.user && s.user.email) || "") ? "telegram" : "email/google" }); if (s) await K.put("meta", Object.assign({ key: "cloudSession" }, s)); else await K.put("meta", { key: "cloudSession", none: true }); paint(); if (window.__kolchanRemind) window.__kolchanRemind(); if (s && joinPend) setTimeout(doJoin, 0); };
+  const saveSession = async (s) => { const was = session; session = s; if (s && !was && window.__kolchanEvent) window.__kolchanEvent("signin", { how: /@tg\.kolchan\.app$/i.test((s.user && s.user.email) || "") ? "telegram" : "email/google" }); if (s) await K.put("meta", Object.assign({ key: "cloudSession" }, s)); else await K.put("meta", { key: "cloudSession", none: true }); paint(); if (window.__kolchanRemind) window.__kolchanRemind(); if (s && joinPend) setTimeout(doJoin, 0); if (s && alicePend) setTimeout(showAlice, 0); };
   const metaOf = (u) => { const m = (u && u.user_metadata) || {}; return { name: m.name || "", phone: m.phone || "", tg_id: m.tg_id || null, tg_username: m.tg_username || "" }; };
   const fromAuth = (j) => ({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at ? j.expires_at * 1000 : Date.now() + (j.expires_in || 3600) * 1000, user: { id: j.user && j.user.id, email: (j.user && (j.user.email || (j.user.user_metadata && j.user.user_metadata.email))) || "", meta: metaOf(j.user) } });
   // accounts made through Telegram get a service address that is never shown
@@ -310,6 +310,47 @@
     } catch (e) {}
   };
   // opening an invite link: #join=<trip>.<code>
+  // ---------- Алиса: Яндекс прислал человека войти и подключить навык (alice-auth) ----------
+  let alicePend = null;
+  function takeAlice() {
+    const q = new URLSearchParams(location.search);
+    if (q.get("alice") !== "1" || !q.get("redirect_uri")) return;
+    history.replaceState(null, "", location.href.split("?")[0] + location.hash);
+    alicePend = { r: q.get("redirect_uri"), s: q.get("state") || "", t: Date.now() };
+    K.put("meta", Object.assign({ key: "alicePending" }, alicePend));
+  }
+  async function dropAlice() { alicePend = null; await K.put("meta", { key: "alicePending", none: true }); gate(); }
+  function showAlice() {
+    if (!alicePend || !session) return;
+    if (Date.now() - alicePend.t > 30 * 60000) { dropAlice(); return; }
+    let bg = $("alice-bg");
+    if (!bg) {
+      bg = document.createElement("div"); bg.className = "sheet-bg"; bg.id = "alice-bg";
+      bg.innerHTML = '<div class="sheet"><h2>Подключить Алису</h2><p class="note" id="alice-who"></p><div class="err" id="alice-err" hidden></div>' +
+        '<div class="actions"><div class="right"><button type="button" id="alice-no">Отмена</button><button type="button" class="primary" id="alice-yes">Подключить</button></div></div></div>';
+      document.body.appendChild(bg);
+      $("alice-no").onclick = async () => { const p = alicePend; await dropAlice(); bg.hidden = true; if (p) location.href = p.r + (p.r.includes("?") ? "&" : "?") + "error=access_denied" + (p.s ? "&state=" + encodeURIComponent(p.s) : ""); };
+      $("alice-yes").onclick = async () => {
+        const b = $("alice-yes"); b.disabled = true; $("alice-err").hidden = true;
+        try {
+          const t = await token();
+          const r = await fetch(CFG.url + "/functions/v1/alice-auth/code", { method: "POST", headers: { "Content-Type": "application/json", apikey: CFG.key, Authorization: "Bearer " + t }, body: JSON.stringify({ redirect_uri: alicePend.r, state: alicePend.s }) });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok || !j.url) throw new Error(j.error || ("HTTP " + r.status));
+          await dropAlice(); location.href = j.url;
+        } catch (e) { $("alice-err").textContent = "Не получилось подключить: " + (e.message || e) + ". Попробуй ещё раз."; $("alice-err").hidden = false; report("error", { how: "alice", msg: String(e.message || e).slice(0, 200) }); }
+        finally { b.disabled = false; }
+      };
+    }
+    $("alice-who").textContent = "Алиса сможет искать и добавлять вещи в аккаунте «" + shownName(session.user) + "».";
+    bg.hidden = false;
+  }
+  // в окне аккаунта: подключена ли Алиса, «Отключить»
+  async function paintAlice() {
+    const box = $("acc-alice"); if (!box || !session) return;
+    try { const rows = await rest("alice_links?select=id"); box.hidden = !(Array.isArray(rows) && rows.length); } catch (e) { box.hidden = true; }
+  }
+
   let joinPend = null;
   function takeJoin() {
     const m = /[#&]join=([A-Za-z0-9]+)(?:\.([A-Za-z0-9]+))?/.exec(location.hash || "");
@@ -457,9 +498,10 @@
   let gateWas = false;
   function gate() {
     const sh = $("acc-bg"); if (!sh || !ready) return;
-    const on = !session && (!localOk || !!joinPend);   // an invite link needs an account
+    const on = !session && (!localOk || !!joinPend || !!alicePend);   // an invite link or Alice needs an account
     const jn = $("acc-join-note"); if (jn) jn.hidden = !joinPend;
-    const lo = $("acc-local"); if (lo) lo.hidden = !!joinPend;
+    const an = $("acc-alice-note"); if (an) an.hidden = !alicePend || !!joinPend;
+    const lo = $("acc-local"); if (lo) lo.hidden = !!joinPend || !!alicePend;
     sh.classList.toggle("gate", on);
     if (on) sh.hidden = false;
     $("acc-close").parentElement.parentElement.hidden = on || !!window.__KOLCHAN_AVA;
@@ -520,7 +562,7 @@
     const pbtn = (id, label, icon) => prov.includes(id)
       ? '<button type="button" data-p="' + id + '">' + icon + label + "</button>"
       : '<button type="button" data-p="' + id + '" disabled aria-label="' + label + ' — скоро"><span class="pl">' + icon + label + '</span><span class="soon"><b>SOON</b></span></button>';
-    sh.innerHTML = '<div class="sheet"><div class="gate-head"><div class="logo">Колчан' + (BETA ? ' <span class="beta-tag">β</span>' : "") + '</div><p>Войди или зарегистрируйся — база будет храниться онлайн и одинаково на всех твоих устройствах.</p><p class="join-note" id="acc-join-note" hidden>Тебя позвали в поездку. Войди или зарегистрируйся — и она откроется.</p></div><h2>Аккаунт</h2>' +
+    sh.innerHTML = '<div class="sheet"><div class="gate-head"><div class="logo">Колчан' + (BETA ? ' <span class="beta-tag">β</span>' : "") + '</div><p>Войди или зарегистрируйся — база будет храниться онлайн и одинаково на всех твоих устройствах.</p><p class="join-note" id="acc-join-note" hidden>Тебя позвали в поездку. Войди или зарегистрируйся — и она откроется.</p><p class="join-note" id="acc-alice-note" hidden>Войди в Колчан, чтобы подключить его к Алисе.</p></div><h2>Аккаунт</h2>' +
       '<div id="acc-out">' +
         '<div class="note" style="margin-bottom:12px">Войди, чтобы база хранилась онлайн и была одинаковой на всех устройствах. Без входа всё работает как раньше — только на этом телефоне.</div>' +
         '<div class="acc-tabs"><button type="button" id="acc-tab-in">Вход</button><button type="button" id="acc-tab-up">Регистрация</button></div>' +
@@ -541,6 +583,7 @@
         '<div class="acc-me"><div class="acc-ava" id="acc-ava"></div><div><b id="acc-mail"></b><span class="note">База хранится онлайн и на этом телефоне</span></div></div>' +
         '<div class="note" id="acc-ids" hidden style="white-space:pre-line"></div>' +
         '<button type="button" id="acc-link-tg" hidden>✈️ Привязать Telegram</button>' +
+        '<div class="note" id="acc-alice" hidden>🎙 Алиса подключена · <button type="button" class="link" id="acc-alice-off">Отключить</button></div>' +
         '<div class="ok" id="acc-in-msg" hidden></div>' +
 
         '<div class="confirm" id="acc-logout-confirm" hidden><span>Выйти из аккаунта? Данные останутся в облаке, а с этого телефона будут убраны — при следующем входе вернутся.</span><div class="row2"><button type="button" id="acc-logout-no">Отмена</button><button type="button" class="danger" id="acc-logout-yes">Выйти</button></div></div>' +
@@ -556,7 +599,7 @@
       '<div class="actions"><div class="right"><button type="button" id="acc-close">Закрыть</button></div></div></div>';
     document.body.appendChild(sh);
     $("acc-out").style.display = "";
-    const open = () => { err(""); paint(); sh.hidden = false; };
+    const open = () => { err(""); paint(); sh.hidden = false; paintAlice(); };
     ab.onclick = open;
     $("acc-close").onclick = () => { sh.hidden = true; };
     if (window.__kolchanX && window.__KOLCHAN_AVA) { window.__kolchanX(sh.querySelector(".sheet"), () => { sh.hidden = true; }); }
@@ -612,6 +655,10 @@
       const btns = dsheet.querySelector(".dataBtns"); dsheet.insertBefore(box, btns);
     }
     $("acc-sync").onclick = () => syncNow(true);
+    $("acc-alice-off").onclick = async () => {
+      try { await rest("alice_links?user_id=eq." + session.user.id, { method: "DELETE", headers: { Prefer: "return=minimal" } }); $("acc-alice").hidden = true; }
+      catch (e) { err("Не получилось отключить Алису. Попробуй ещё раз."); }
+    };
     // «Выйти» in the avatar menu opens the account window with the confirmation
     window.__kolchanLogout = () => { err(""); paint(); sh.hidden = false; $("acc-logout-confirm").hidden = false; };
     $("acc-logout-no").onclick = () => { $("acc-logout-confirm").hidden = true; };
@@ -630,7 +677,8 @@
     };
 
     const lm = await K.get("meta", "localMode"); localOk = !BETA && !!(lm && lm.on);
-    takeJoin();
+    takeJoin(); takeAlice();
+    if (!alicePend) { const ap = await K.get("meta", "alicePending"); if (ap && ap.r && Date.now() - ap.t < 30 * 60000) alicePend = { r: ap.r, s: ap.s || "", t: ap.t }; }
     if (!joinPend) { const jp = await K.get("meta", "joinPending"); if (jp && jp.t) joinPend = { t: jp.t, inv: jp.inv || "" }; }
     const s = await K.get("meta", "cloudSession");
     session = s && s.access_token ? { access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at, user: s.user } : null;
@@ -644,6 +692,7 @@
         const base = await K.get("meta", "cloudBase");
         setState(base && base.t ? "Синхронизировано: " + fmt.format(new Date(base.t)) : "");
         if (joinPend) doJoin(); else syncNow(false);
+        if (alicePend) showAlice();
       }
     }
     const tp = await K.get("meta", "tgPending");

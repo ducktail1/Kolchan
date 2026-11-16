@@ -1,7 +1,7 @@
 // Поддельный Supabase в памяти для QA: таблицы, правила доступа как на сервере, вход и выход.
 // Подключается к контексту Playwright: ctx.route(/supabase\.co/, mock.handle)
 function createMock() {
-  const db = { records: [], trips: [], trip_members: [], trip_records: [], events: [] };
+  const db = { records: [], trips: [], trip_members: [], trip_records: [], events: [], alice_links: [], alice_codes: [] };
   const users = new Map();      // id → { id, email, password, name }
   const tokens = new Map();     // access → uid
   const refresh = new Map();    // refresh → uid
@@ -38,6 +38,14 @@ function createMock() {
       return J(null, 204);
     }
     if (p.startsWith("/auth/v1/")) return J({});
+    // Алиса: Колчан просит одноразовый код для Яндекса (как supabase/functions/alice-auth /code)
+    if (p === "/functions/v1/alice-auth/code") {
+      const uid = tokens.get((req.headers()["authorization"] || "").replace("Bearer ", ""));
+      if (!uid) return J({ error: "unauthorized" }, 401);
+      if (!/^https:\/\/([a-z0-9-]+\.)*yandex\.(net|ru|com)\//.test(body.redirect_uri || "")) return J({ error: "invalid_redirect_uri" }, 400);
+      const code = "code-" + (++n); db.alice_codes.push({ code, user_id: uid }); db.alice_links.push({ id: "al" + n, user_id: uid });
+      return J({ url: body.redirect_uri + "?code=" + code + (body.state ? "&state=" + encodeURIComponent(body.state) : "") });
+    }
     if (!p.startsWith("/rest/v1/")) return J({});
     const path = p.slice("/rest/v1/".length);
     const f = {}; url.searchParams.forEach((v, k) => { if (v.startsWith("eq.")) f[k] = v.slice(3); });
@@ -49,6 +57,10 @@ function createMock() {
       rows.forEach(e => db.events.push(Object.assign({ user_id: me || null }, e))); return J(null, 201);
     }
     if (!me) return J({ message: "JWT expired" }, 401);
+    if (path === "alice_links") {
+      if (method === "GET") return J(db.alice_links.filter(l => l.user_id === me));
+      if (method === "DELETE") { db.alice_links = db.alice_links.filter(l => !(l.user_id === me && match(l))); return J(null, 204); }
+    }
     if (path === "records") {
       if (method === "GET") { const all = db.records.filter(r => r.user_id === me); const rg = (req.headers()["range"] || "0-999").split("-").map(Number); return J(all.slice(rg[0], rg[1] + 1)); }
       for (const r of body) { const i = db.records.findIndex(x => x.user_id === me && x.coll === r.coll && x.id === r.id); const row = Object.assign({}, r, { user_id: me }); if (i >= 0) db.records[i] = row; else db.records.push(row); }

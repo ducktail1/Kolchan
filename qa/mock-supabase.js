@@ -8,11 +8,11 @@ function createMock() {
   let down = false, n = 0;
   const log = [];
 
-  function addUser(id, email, password, name) { users.set(id, { id, email, password, name }); return users.get(id); }
+  function addUser(id, email, password, name, created) { users.set(id, { id, email, password, name, created: created || new Date().toISOString() }); return users.get(id); }
   function session(uid) {
     const u = users.get(uid), a = "acc-" + uid + "-" + (++n), r = "ref-" + uid + "-" + n;
     tokens.set(a, uid); refresh.set(r, uid);
-    return { access_token: a, refresh_token: r, expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: uid, email: u.email, user_metadata: { name: u.name } } };
+    return { access_token: a, refresh_token: r, expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: uid, email: u.email, created_at: u.created, user_metadata: { name: u.name } } };
   }
   // the same as supabase/trips-owner.sql trip_record_ok
   const recordOk = (r) => ["places", "bags", "items", "quivers"].includes(r.coll) && r.id && r.id.length <= 64 && JSON.stringify(r.data || {}).length <= 65536 &&

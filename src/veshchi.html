@@ -3058,6 +3058,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
       if (["wel-bg", "inst-bg", "acc-bg"].some(id => { const e = $(id); return e && !e.hidden; })) { setTimeout(obCheck, 700); return; }
       // с аккаунтом — ждём первую синхронизацию: вещи могли уже быть в облаке
       const acc = window.__kolchanAccount && window.__kolchanAccount();
+      // аккаунт заведён давно (вход на новом телефоне или в браузере) — мастер не нужен
+      if (acc && !(m && m.step) && acc.created && Date.now() - Date.parse(acc.created) > 3600e3) { await obSave({ done: true }); return; }
       if (acc) { const cb = await obK().get("meta", "cloudBase"); if (!(cb && cb.user)) { setTimeout(obCheck, 1000); return; } }
       if (m && m.step) { obOpen(m); return; }
       if (mainHas()) { await obSave({ done: true }); return; }

@@ -130,6 +130,33 @@ const track = (opened, p) => { opened.push(p); return p; };
     check(!(await p.isVisible("#ob")), "мастер открылся повторно");
   });
 
+  await scenario("Первый вход на ПК в браузере: у старого аккаунта (с вещами и пустого) нет приветствия, мастера и «экрана Домой»", async (o) => {
+    const old = new Date(Date.now() - 30 * 864e5).toISOString();
+    mock = createMock(); mock.addUser("e1", "old@k.ru", "pw1234", "Старый", old); mock.addUser("e2", "empty@k.ru", "pw1234", "Пустой", old);
+    mock.db.records.push({ user_id: "e1", coll: "places", id: "p1", data: { id: "p1", name: "Дом", order: 0, log: [] }, deleted: false });
+    mock.db.records.push({ user_id: "e1", coll: "items", id: "x1", data: { id: "x1", name: "Дрель", place: "Дом", parts: ["дом"], log: [] }, deleted: false });
+    for (const [beta, mail] of [[false, "old@k.ru"], [true, "old@k.ru"], [true, "empty@k.ru"], [false, "empty@k.ru"]]) {
+      const tag = (beta ? "бета" : "основной") + ", " + mail;
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
+      await ctx.route(/supabase\.co/, mock.handle);
+      const p = await ctx.newPage(); p.ctx = ctx; p.errs = []; p.on("pageerror", e => p.errs.push(e.message)); track(o, p);
+      await p.goto(BASE + (beta ? "beta/" : "")); await sleep(1500);
+      const vis = async () => p.evaluate(() => ["wel-bg", "ob-bg", "inst-bg", "inst-bar"].filter(id => { const e = document.getElementById(id); return e && !e.hidden; }));
+      let v = await vis(); check(!v.length, tag + ": до входа поверх экрана входа открыто " + v.join(", "));
+      check(await p.isVisible("#acc-mail-in"), tag + ": нет экрана входа");
+      await p.fill("#acc-mail-in", mail); await p.fill("#acc-pass", "pw1234"); await p.press("#acc-pass", "Enter"); await sleep(5000);
+      if (process.env.SHOT) await p.screenshot({ path: process.env.SHOT + "-" + (beta ? "beta" : "main") + "-" + mail.split("@")[0] + ".png" });
+      v = await vis(); check(!v.length, tag + ": после входа открыто " + v.join(", "));
+      if (mail === "old@k.ru") check((await names(p, "items")).includes("Дрель"), tag + ": вещи из облака не пришли");
+    }
+    // без аккаунта («Использовать локально») приветствие остаётся
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
+    await ctx.route(/supabase\.co/, mock.handle);
+    const p = await ctx.newPage(); p.ctx = ctx; p.errs = []; p.on("pageerror", e => p.errs.push(e.message)); track(o, p);
+    await p.goto(BASE); await sleep(1500); await p.click("#acc-local-go"); await sleep(1200);
+    check(await p.isVisible("#welcome"), "основной без аккаунта: после «Использовать локально» нет приветствия");
+  });
+
   await scenario("Мастер с аккаунтом: новый — видит, с вещами в облаке — не видит", async (o) => {
     mock = createMock(); mock.addUser("n1", "new@k.ru", "pw1234", "Новый"); mock.addUser("e1", "old@k.ru", "pw1234", "Старый");
     mock.db.records.push({ user_id: "e1", coll: "items", id: "x1", data: { id: "x1", name: "Дрель", place: "Дом", parts: ["дом"], log: [] }, deleted: false });

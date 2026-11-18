@@ -353,7 +353,7 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
     window.__kolchanRemind = refresh;
     ["places", "bags", "items"].forEach(c => db.collection(c).onSnapshot((s) => { state[c] = s.docs.map(d => Object.assign({ id: d.id }, d.data())); refresh(); }));
     // вход / «Использовать локально» закрывают экран входа — решаем про приветствие заново
-    const watchAcc = () => { const ab = $("acc-bg"); if (ab) new MutationObserver(refresh).observe(ab, { attributes: true, attributeFilter: ["hidden", "class"] }); else setTimeout(watchAcc, 500); };
+    const watchAcc = () => { const ab = $("acc-bg"); if (ab) { new MutationObserver(refresh).observe(ab, { attributes: true, attributeFilter: ["hidden", "class"] }); refresh(); } else setTimeout(watchAcc, 500); };
     watchAcc();
 
     $("wel-start").onclick = () => { welClose(); const a = $("add"); a.click(); setTimeout(() => { const p = $("add-place"); if (p) p.click(); }, 50); };

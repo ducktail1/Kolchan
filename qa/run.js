@@ -149,6 +149,23 @@ const track = (opened, p) => { opened.push(p); return p; };
       v = await vis(); check(!v.length, tag + ": после входа открыто " + v.join(", "));
       if (mail === "old@k.ru") check((await names(p, "items")).includes("Дрель"), tag + ": вещи из облака не пришли");
     }
+    // вход через Telegram на ПК, всплывающее окно заблокировано (как в артефакте): со страницы не уходим, ждём бота
+    for (const beta of [false, true]) {
+      const tag = (beta ? "бета" : "основной") + ", Telegram";
+      mock.tg.user = null;
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
+      await ctx.route(/supabase\.co/, mock.handle); await ctx.addInitScript(() => { window.open = () => null; });
+      const p = await ctx.newPage(); p.ctx = ctx; p.errs = []; p.on("pageerror", e => p.errs.push(e.message)); track(o, p);
+      const url0 = BASE + (beta ? "beta/" : ""); await p.goto(url0); await sleep(1500);
+      await p.click('#acc-bg button[data-p="telegram"]'); await sleep(800);
+      check(p.url() === url0, tag + ": ушли со страницы на " + p.url());
+      check(await p.isVisible("#acc-wait") && /t\.me\/mykolchanbot\?start=login_/.test(await p.getAttribute("#acc-wait-open", "href")), tag + ": нет окна ожидания с кнопкой «Открыть Telegram»");
+      mock.tg.user = "e1"; await sleep(4500);
+      const v = await p.evaluate(() => ["wel-bg", "ob-bg", "inst-bg", "inst-bar", "acc-bg"].filter(id => { const e = document.getElementById(id); return e && !e.hidden; }));
+      check(!v.length, tag + ": после входа открыто " + v.join(", "));
+      check((await names(p, "items")).includes("Дрель"), tag + ": вещи из облака не пришли");
+    }
+    mock.tg.user = null;
     // без аккаунта («Использовать локально») приветствие остаётся
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
     await ctx.route(/supabase\.co/, mock.handle);

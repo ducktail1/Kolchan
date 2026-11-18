@@ -388,7 +388,7 @@
   const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const tgApp = (p) => "tg://resolve?domain=" + (CFG.tgBot || "") + "&start=login_" + p.code + tgTail(p);
   function openTg(p) {
-    if (!mobile) { const w = window.open(tgLink(p), "_blank"); if (!w) location.href = tgLink(p); return; }
+    if (!mobile) { window.open(tgLink(p), "_blank"); return; }   // окно заблокировано — в окне ожидания есть кнопка «Открыть Telegram»; со страницы не уходим, иначе ожидание входа теряется
     location.href = tgApp(p);   // no Telegram app → the wait window has a web link
   }
   function waitUi(on) {

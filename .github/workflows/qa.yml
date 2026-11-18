@@ -25,6 +25,9 @@ jobs:
       - name: Алиса (вход и навык)
         working-directory: qa
         run: node alice.test.mjs
+      - name: Бот (заметки владельца)
+        working-directory: qa
+        run: node bot.test.mjs
       - name: Отчёт
         if: always()
         run: cat qa/report.md >> "$GITHUB_STEP_SUMMARY"

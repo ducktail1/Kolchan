@@ -343,6 +343,19 @@ const track = (opened, p) => { opened.push(p); return p; };
     const trip = (await all(A, "quivers")).find(q => q.kind === "trip");
     check(trip && (trip.exp || []).length === 2, "у Алексея не 2 траты: " + JSON.stringify(trip && trip.exp));
     check((await names(A, "items")).includes("Палатка"), "палатка не дошла до Алексея");
+    // общее: переименовать (Митяй) и удалить (Алексей) — у второго тоже меняется
+    await B.locator("#common-list .item .body").filter({ hasText: "Палатка" }).click(); await sleep(300);
+    check(await B.isVisible("#cm-bg"), "по нажатию на общее не открылось окно");
+    await B.fill("#cm-name", "палатка трёхместная"); await B.click("#cm-save"); await sleep(300);
+    await sync(B); await sync(A);
+    check((await names(A, "items")).includes("Палатка трёхместная") && !(await names(A, "items")).includes("Палатка"), "переименование общего не дошло до Алексея: " + (await names(A, "items")));
+    await A.locator("#common-list .item .body").filter({ hasText: "Палатка трёхместная" }).click(); await sleep(300);
+    await A.click("#cm-del"); check(/Удалить «Палатка трёхместная» из общего/.test(await A.textContent("#cm-del-text")), "нет подтверждения удаления общего");
+    await A.click("#cm-del-yes"); await sleep(300);
+    check(await A.evaluate(() => document.getElementById("cm-bg").hidden), "окно не закрылось после удаления");
+    await sync(A); await sync(B);
+    check(!(await names(B, "items")).some(n => /Палатка/.test(n)), "удалённое общее осталось у Митяя");
+    await B.fill(".common-add input", "палатка"); await B.click(".common-add button[type=submit]"); await sleep(300); await sync(B); await sync(A);
     // балансы одинаковые у обоих
     const bal = async (p) => { await p.click("#ex-open"); await sleep(300); const t = await p.evaluate(() => document.getElementById("ex").innerText); await p.click("#ex .sh-x"); return (t.match(/-?\d[\d\s]*₽/g) || []).join(","); };
     check(await bal(A) === await bal(B), "балансы у Алексея и Митяя разные");

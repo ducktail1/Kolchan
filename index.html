@@ -663,6 +663,21 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <button type="button" class="primary" id="tm-invite">Позвать ещё</button>
   </div>
 </div>
+<div class="sheet-bg" id="cm-bg" hidden>
+  <form class="sheet" id="cm-form" novalidate>
+    <h2>Общее</h2>
+    <label>Название
+      <input id="cm-name" autocomplete="off">
+    </label>
+    <div class="err" id="cm-err" hidden></div>
+    <button type="button" class="danger" id="cm-del">Удалить</button>
+    <div class="confirm" id="cm-del-box" hidden>
+      <span id="cm-del-text"></span>
+      <div class="row2"><button type="button" id="cm-del-no">Оставить</button><button type="button" class="danger" id="cm-del-yes">Удалить</button></div>
+    </div>
+    <div class="actions"><div class="right"><button type="button" id="cm-cancel">Отмена</button><button type="submit" class="primary" id="cm-save">Сохранить</button></div></div>
+  </form>
+</div>
 <div class="sheet-bg" id="rn-bg" hidden>
   <form class="sheet" id="rn-form" novalidate>
     <h2>Место</h2>
@@ -1246,6 +1261,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
         else if (mine) setCommon(it, null, false);
       };
       const body = document.createElement("div"); body.className = "body"; const nm = document.createElement("div"); nm.className = "name"; nm.textContent = it.name; body.appendChild(nm);
+      body.setAttribute("role", "button"); body.tabIndex = 0; body.setAttribute("aria-label", "Изменить «" + it.name + "»");
+      body.onclick = () => openCommon(it); body.onkeydown = (e) => { if (e.key === "Enter") openCommon(it); };
       const rt = document.createElement("div"); rt.className = "rt" + (got ? " got" : mine ? " mine" : "");
       rt.textContent = !it.takenBy ? "никто" : (mine ? (got ? "купил я" : "беру я") : (got ? "купил " : "берёт ") + it.takenBy);
       row.append(th, body, rt);
@@ -1594,6 +1611,36 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     $("ta-bg").hidden = false;
   }
   $("ta-bg").addEventListener("click", (e) => { if (e.target === $("ta-bg")) $("ta-bg").hidden = true; });
+  // «Общее»: переименовать или удалить запись
+  let cmIt = null;
+  function openCommon(it) {
+    cmIt = it; $("cm-name").value = it.name; $("cm-err").hidden = true; $("cm-del-box").hidden = true;
+    $("cm-bg").hidden = false; setTimeout(() => { $("cm-name").focus(); $("cm-name").select(); }, 50);
+  }
+  const closeCommon = () => { $("cm-bg").hidden = true; cmIt = null; };
+  $("cm-cancel").onclick = closeCommon;
+  $("cm-bg").addEventListener("click", (e) => { if (e.target === $("cm-bg")) closeCommon(); });
+  $("cm-form").addEventListener("submit", async (e) => {
+    e.preventDefault(); const it = cmIt; if (!it) return;
+    const nm = cap($("cm-name").value.replace(/\s+/g, " ").trim());
+    if (!nm) { $("cm-err").textContent = "Напиши название."; $("cm-err").hidden = false; return; }
+    if (nm === it.name) { closeCommon(); return; }
+    const d = base(it); d.common = true; d.name = nm; d.updatedAt = Date.now();
+    try { await db.collection("items").doc(it.id).set(d); closeCommon(); buzz(); }
+    catch (err) { $("cm-err").textContent = "Не получилось сохранить. Попробуй ещё раз."; $("cm-err").hidden = false; }
+  });
+  $("cm-del").onclick = () => {
+    const it = cmIt; if (!it) return;
+    $("cm-del-text").textContent = "Удалить «" + it.name + "» из общего?" + (it.takenBy && it.takenBy !== meName() ? " Это берёт " + it.takenBy + "." : "");
+    $("cm-del-box").hidden = false; $("cm-err").hidden = true;
+  };
+  $("cm-del-no").onclick = () => { $("cm-del-box").hidden = true; };
+  $("cm-del-yes").onclick = async () => {
+    const it = cmIt, btn = $("cm-del-yes"); if (!it) return; btn.disabled = true;
+    try { await db.collection("items").doc(it.id).delete(); closeCommon(); buzz(); }
+    catch (err) { $("cm-err").textContent = "Не получилось удалить. Попробуй ещё раз."; $("cm-err").hidden = false; }
+    btn.disabled = false;
+  };
   async function setCommon(it, who, bought) { buzz();
     const d = base(it); d.common = true; d.takenBy = who || null; d.bought = !!(who && bought); d.updatedAt = Date.now();
     try { await db.collection("items").doc(it.id).set(d); } catch (e) { setStatus("Не получилось сохранить. Попробуй ещё раз."); }

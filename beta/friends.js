@@ -217,7 +217,7 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
       $("inst-warn").textContent = acc ? "В приложении с иконки войди тем же аккаунтом — все вещи подтянутся." : warnLocal;
       inst.hidden = false;
     };
-    if (!standalone) {
+    if (!standalone && (isIOS || isAndroid)) {   // на компьютере экран «Домой» не нужен
       // link in the welcome card and in «Данные»
       const how = document.createElement("button"); how.type = "button"; how.className = "link"; how.textContent = "Как поставить на экран «Домой»";
       how.onclick = () => { welClose(); window.__showInstall(); }; wel.appendChild(how);
@@ -331,7 +331,11 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
     const state = { places: [], bags: [], items: [] };
     async function refresh() {
       const total = state.places.length + state.bags.length + state.items.length;
-      if (total > 0) welBg.hidden = true;
+      // приветствие — только без аккаунта и не поверх экрана входа (новым с аккаунтом — мастер)
+      const acc = window.__kolchanAccount && window.__kolchanAccount();
+      const ab = $("acc-bg"), gateOn = !!(ab && !ab.hidden && ab.classList.contains("gate"));
+      if (total > 0 || acc) welBg.hidden = true;
+      else if (gateOn) { if (!welBg.hidden) { welBg.hidden = true; welSeen = false; } }
       else if (!welSeen) { welSeen = true; welBg.hidden = false; }
       let show = false;
       try {
@@ -348,6 +352,9 @@ header .tt .tsub .qname:not([hidden])::before { content: "· "; }
     }
     window.__kolchanRemind = refresh;
     ["places", "bags", "items"].forEach(c => db.collection(c).onSnapshot((s) => { state[c] = s.docs.map(d => Object.assign({ id: d.id }, d.data())); refresh(); }));
+    // вход / «Использовать локально» закрывают экран входа — решаем про приветствие заново
+    const watchAcc = () => { const ab = $("acc-bg"); if (ab) { new MutationObserver(refresh).observe(ab, { attributes: true, attributeFilter: ["hidden", "class"] }); refresh(); } else setTimeout(watchAcc, 500); };
+    watchAcc();
 
     $("wel-start").onclick = () => { welClose(); const a = $("add"); a.click(); setTimeout(() => { const p = $("add-place"); if (p) p.click(); }, 50); };
     $("rem-later").onclick = async () => { await K.put("meta", { key: "remindSnooze", until: Date.now() + 3 * DAY }); refresh(); };

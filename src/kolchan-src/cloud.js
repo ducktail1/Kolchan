@@ -17,7 +17,7 @@
   // ---------- auth (Supabase GoTrue over plain fetch) ----------
   let session = null;   // { access_token, refresh_token, expires_at, user: { id, email } }
   const saveSession = async (s) => { const was = session; session = s; if (s && !was && window.__kolchanEvent) window.__kolchanEvent("signin", { how: /@tg\.kolchan\.app$/i.test((s.user && s.user.email) || "") ? "telegram" : "email/google" }); if (s) await K.put("meta", Object.assign({ key: "cloudSession" }, s)); else await K.put("meta", { key: "cloudSession", none: true }); paint(); if (window.__kolchanRemind) window.__kolchanRemind(); if (s && joinPend) setTimeout(doJoin, 0); if (s && alicePend) setTimeout(showAlice, 0); };
-  const metaOf = (u) => { const m = (u && u.user_metadata) || {}; return { name: m.name || "", phone: m.phone || "", tg_id: m.tg_id || null, tg_username: m.tg_username || "" }; };
+  const metaOf = (u) => { const m = (u && u.user_metadata) || {}; return { name: m.name || "", phone: m.phone || "", tg_id: m.tg_id || null, tg_username: m.tg_username || "", created: (u && u.created_at) || "" }; };
   const fromAuth = (j) => ({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at ? j.expires_at * 1000 : Date.now() + (j.expires_in || 3600) * 1000, user: { id: j.user && j.user.id, email: (j.user && (j.user.email || (j.user.user_metadata && j.user.user_metadata.email))) || "", meta: metaOf(j.user) } });
   // accounts made through Telegram get a service address that is never shown
   const realEmail = (e) => (e && !/@tg\.kolchan\.app$/i.test(e) ? e : "");
@@ -388,7 +388,7 @@
   const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const tgApp = (p) => "tg://resolve?domain=" + (CFG.tgBot || "") + "&start=login_" + p.code + tgTail(p);
   function openTg(p) {
-    if (!mobile) { const w = window.open(tgLink(p), "_blank"); if (!w) location.href = tgLink(p); return; }
+    if (!mobile) { window.open(tgLink(p), "_blank"); return; }   // окно заблокировано — в окне ожидания есть кнопка «Открыть Telegram»; со страницы не уходим, иначе ожидание входа теряется
     location.href = tgApp(p);   // no Telegram app → the wait window has a web link
   }
   function waitUi(on) {
@@ -493,7 +493,7 @@
   let mode = "in";
   // sync status lives in «Данные»; a problem marks that menu item (and the avatar) with ⚠
   function setState(text, bad) { const el = $("acc-state"); if (el) { el.textContent = text || ""; el.className = bad ? "err" : "note"; } const b = $("data-open"); if (b) b.textContent = bad ? "Данные ⚠" : "Данные"; }
-  window.__kolchanAccount = () => (session ? { email: shownName(session.user) } : null);
+  window.__kolchanAccount = () => (session ? { email: shownName(session.user), created: (session.user.meta && session.user.meta.created) || "" } : null);
   // no session in the beta → the sign-in screen covers the app and cannot be closed
   let gateWas = false;
   function gate() {

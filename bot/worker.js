@@ -8,6 +8,7 @@
 //   REPO           — репозиторий с базой, например ducktail1/kolchan-data
 //   OWNER_ID       — твой Telegram ID (бот подскажет его на /start)
 //   HOOK_SECRET    — любая длинная строка из букв и цифр          (Secret)
+//   Заметки владельца («! текст», кнопка «📝 Заметка», /notes) пишутся в brain/inbox.md того же REPO.
 //
 // После сохранения открыть в браузере: https://<адрес-worker>/setup?key=<HOOK_SECRET>
 
@@ -16,7 +17,7 @@ const LOG_MAX = 80;
 const DATA = ["places", "bags", "items", "quivers"];
 const MAINQ = "main", MAIN_NAME = "Основной";
 const QOF = (r) => (r && r.q) || MAINQ;
-export const BOT_VERSION = "1.4.0";
+export const BOT_VERSION = "1.5.0";
 
 // ---------- helpers ----------
 const low = (s) => (s || "").toLowerCase().replace(/ё/g, "е");
@@ -66,6 +67,40 @@ async function load(env) {
 }
 async function save(env, data, sha, message) {
   await gh(env, "PUT", { message, content: b64enc(serialize(data)), sha, branch: "main" });
+}
+
+// ---------- заметки владельца: brain/inbox.md в REPO ----------
+const NOTES = "brain/inbox.md";
+const NOTE_HEAD = "# Входящие заметки из бота\n\nПишет @mykolchanbot (только владелец). Claude разбирает: сделанное — [x] или переносит в roadmap.\n\n";
+export function noteOf(text) {
+  const m = /^(?:!|\/n(?:ote)?(?:@\w+)?(?:\s|$)|заметка[:\s])\s*([\s\S]*)$/i.exec((text || "").trim());
+  return m ? m[1].trim() : null;
+}
+const mskStamp = (t = Date.now()) => new Date(t + 3 * 3600e3).toISOString().slice(0, 16).replace("T", " ");
+async function ghFile(env, path, method, body) {
+  const url = "https://api.github.com/repos/" + env.REPO + "/contents/" + path;
+  const r = await fetch(url + (method === "GET" ? "?ref=main" : ""), {
+    method, headers: { Authorization: "Bearer " + env.GH_TOKEN, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "kolchan-bot", "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (method === "GET" && r.status === 404) return null;
+  if (!r.ok) { const e = new Error("GitHub " + r.status); e.status = r.status; throw e; }
+  return r.json();
+}
+async function readNotes(env) {
+  const j = await ghFile(env, NOTES, "GET");
+  return j ? { text: b64dec(j.content || ""), sha: j.sha } : { text: NOTE_HEAD, sha: null };
+}
+export const openNotes = (text) => text.split("\n").filter((l) => /^- \[ \] /.test(l)).map((l) => l.slice(6));
+async function addNote(env, note) {
+  const line = "- [ ] " + mskStamp() + " — " + note.replace(/\s*\n\s*/g, " / ");
+  for (let i = 0; i < 3; i++) {
+    const { text, sha } = await readNotes(env);
+    const next = (text.endsWith("\n") ? text : text + "\n") + line + "\n";
+    try { await ghFile(env, NOTES, "PUT", Object.assign({ message: "📝 заметка из бота", content: b64enc(next), branch: "main" }, sha ? { sha } : {})); return openNotes(next).length; }
+    catch (e) { if (e.status !== 409 && e.status !== 422) throw e; }
+  }
+  throw new Error("GitHub занят, попробуй ещё раз");
 }
 
 // ---------- model ----------
@@ -203,7 +238,7 @@ export function readState(msg) {
 }
 
 const MENU = {
-  keyboard: [[{ text: "🔎 Найти" }, { text: "➕ Добавить" }, { text: "⇄ Переложить" }], [{ text: "📍 Места" }, { text: "🎒 Сумки" }], [{ text: "🚚 В пути" }, { text: "🕓 История" }]],
+  keyboard: [[{ text: "🔎 Найти" }, { text: "➕ Добавить" }, { text: "⇄ Переложить" }], [{ text: "📍 Места" }, { text: "🎒 Сумки" }], [{ text: "🚚 В пути" }, { text: "🕓 История" }], [{ text: "📝 Заметка" }]],
   resize_keyboard: true, is_persistent: true,
 };
 
@@ -412,7 +447,9 @@ const HELP =
   "Быстрые команды текстом:\n" +
   "<code>+ Маска Smith → Дача</code> — добавить (несколько через запятую)\n" +
   "<code>маска → Сочи</code> — переложить\n" +
-  "<code>маска → Дача // в стирке</code> — с заметкой";
+  "<code>маска → Дача // в стирке</code> — с заметкой\n\n" +
+  "Заметки по доработкам (видишь только ты, их читает Claude):\n" +
+  "<code>! сделать удаление вещей свайпом</code> — записать, /notes — последние";
 
 const ARROW = /\s*(?:→|->|=>|—>|>>)\s*/;
 export function onText(d, text, reply) {
@@ -654,6 +691,21 @@ async function handleUpdate(env, u) {
       const m = u.message;
       const text = m.text || m.caption || "";
       if (!text) { await send(env, chatId, { text: "Пока понимаю только текст." }); return; }
+      // заметки по доработкам — отдельно от базы вещей
+      const rs = m.reply_to_message ? readState(m.reply_to_message) : null;
+      const note = rs && rs.k === "note" ? clean(text) : noteOf(text);
+      if (clean(text) === "📝 Заметка") { await send(env, chatId, { text: st({ k: "note" }) + "Что записать?", force: "Например: удаление вещей свайпом" }); return; }
+      if (/^\/notes/.test(clean(text))) {
+        const open = openNotes((await readNotes(env)).text);
+        await send(env, chatId, { text: open.length ? "📝 Открытые заметки (" + open.length + "):\n" + open.slice(-15).map((x) => "• " + esc(x)).join("\n") : "📝 Открытых заметок нет." });
+        return;
+      }
+      if (note !== null) {
+        if (!note) { await send(env, chatId, { text: "Напиши текст после «!», например: <code>! поправить вход на ПК</code>" }); return; }
+        const n = await addNote(env, note);
+        await send(env, chatId, { text: "📝 Записал. Открытых заметок: " + n });
+        return;
+      }
       const res = await transact(env, (d) => onText(d, text, m.reply_to_message));
       if (res) await send(env, chatId, res);
     } else {
@@ -747,6 +799,7 @@ export default {
       if (!env.HOOK_SECRET || url.searchParams.get("key") !== env.HOOK_SECRET) return new Response("Неверный key", { status: 403 });
       const hook = await tg(env, "setWebhook", { url: url.origin + "/tg", secret_token: env.HOOK_SECRET, allowed_updates: ["message", "callback_query"], drop_pending_updates: true });
       await tg(env, "setMyCommands", { commands: [{ command: "menu", description: "Меню" }, { command: "places", description: "Места" }, { command: "bags", description: "Сумки" }] });
+      if (env.OWNER_ID) await tg(env, "setMyCommands", { scope: { type: "chat", chat_id: Number(env.OWNER_ID) }, commands: [{ command: "menu", description: "Меню" }, { command: "places", description: "Места" }, { command: "bags", description: "Сумки" }, { command: "notes", description: "Заметки по доработкам" }] });
       const me = await tg(env, "getMe", {});
       return new Response((hook.ok ? "Готово! Бот @" + (me.result && me.result.username) + " подключён. Напиши ему /start." : "Ошибка: " + JSON.stringify(hook)) + "\n", { headers: { "Content-Type": "text/plain; charset=utf-8" } });
     }

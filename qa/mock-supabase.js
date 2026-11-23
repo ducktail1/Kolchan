@@ -8,11 +8,12 @@ function createMock() {
   let down = false, n = 0;
   const log = [];
 
-  function addUser(id, email, password, name) { users.set(id, { id, email, password, name }); return users.get(id); }
+  const tg = { user: null };
+  function addUser(id, email, password, name, created) { users.set(id, { id, email, password, name, created: created || new Date().toISOString() }); return users.get(id); }
   function session(uid) {
     const u = users.get(uid), a = "acc-" + uid + "-" + (++n), r = "ref-" + uid + "-" + n;
     tokens.set(a, uid); refresh.set(r, uid);
-    return { access_token: a, refresh_token: r, expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: uid, email: u.email, user_metadata: { name: u.name } } };
+    return { access_token: a, refresh_token: r, expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: uid, email: u.email, created_at: u.created, user_metadata: { name: u.name } } };
   }
   // the same as supabase/trips-owner.sql trip_record_ok
   const recordOk = (r) => ["places", "bags", "items", "quivers"].includes(r.coll) && r.id && r.id.length <= 64 && JSON.stringify(r.data || {}).length <= 65536 &&
@@ -38,6 +39,8 @@ function createMock() {
       return J(null, 204);
     }
     if (p.startsWith("/auth/v1/")) return J({});
+    // вход через Telegram: бот «подтвердил», когда тест выставил tg.user (как supabase/functions/tg-auth, action poll)
+    if (p === "/functions/v1/tg-auth") return tg.user ? J({ session: session(tg.user) }) : J({ pending: true });
     // Алиса: Колчан просит одноразовый код для Яндекса (как supabase/functions/alice-auth /code)
     if (p === "/functions/v1/alice-auth/code") {
       const uid = tokens.get((req.headers()["authorization"] || "").replace("Bearer ", ""));
@@ -89,6 +92,6 @@ function createMock() {
     if (path === "rpc/trip_kick") { const t = db.trips.find(x => x.id === body.p_trip && x.owner === me); if (!t || body.p_user === me) return J(false); db.trip_members = db.trip_members.filter(m => !(m.trip_id === t.id && m.user_id === body.p_user)); t.invite = Math.random().toString(36).slice(2, 22); return J(true); }
     return J({ message: "unknown " + path }, 404);
   }
-  return { db, users, addUser, session, handle, log, setDown: (v) => { down = v; } };
+  return { db, users, addUser, session, handle, log, tg, setDown: (v) => { down = v; } };
 }
 module.exports = { createMock };

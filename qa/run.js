@@ -130,6 +130,50 @@ const track = (opened, p) => { opened.push(p); return p; };
     check(!(await p.isVisible("#ob")), "мастер открылся повторно");
   });
 
+  await scenario("Первый вход на ПК в браузере: у старого аккаунта (с вещами и пустого) нет приветствия, мастера и «экрана Домой»", async (o) => {
+    const old = new Date(Date.now() - 30 * 864e5).toISOString();
+    mock = createMock(); mock.addUser("e1", "old@k.ru", "pw1234", "Старый", old); mock.addUser("e2", "empty@k.ru", "pw1234", "Пустой", old);
+    mock.db.records.push({ user_id: "e1", coll: "places", id: "p1", data: { id: "p1", name: "Дом", order: 0, log: [] }, deleted: false });
+    mock.db.records.push({ user_id: "e1", coll: "items", id: "x1", data: { id: "x1", name: "Дрель", place: "Дом", parts: ["дом"], log: [] }, deleted: false });
+    for (const [beta, mail] of [[false, "old@k.ru"], [true, "old@k.ru"], [true, "empty@k.ru"], [false, "empty@k.ru"]]) {
+      const tag = (beta ? "бета" : "основной") + ", " + mail;
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
+      await ctx.route(/supabase\.co/, mock.handle);
+      const p = await ctx.newPage(); p.ctx = ctx; p.errs = []; p.on("pageerror", e => p.errs.push(e.message)); track(o, p);
+      await p.goto(BASE + (beta ? "beta/" : "")); await sleep(1500);
+      const vis = async () => p.evaluate(() => ["wel-bg", "ob-bg", "inst-bg", "inst-bar"].filter(id => { const e = document.getElementById(id); return e && !e.hidden; }));
+      let v = await vis(); check(!v.length, tag + ": до входа поверх экрана входа открыто " + v.join(", "));
+      check(await p.isVisible("#acc-mail-in"), tag + ": нет экрана входа");
+      await p.fill("#acc-mail-in", mail); await p.fill("#acc-pass", "pw1234"); await p.press("#acc-pass", "Enter"); await sleep(5000);
+      if (process.env.SHOT) await p.screenshot({ path: process.env.SHOT + "-" + (beta ? "beta" : "main") + "-" + mail.split("@")[0] + ".png" });
+      v = await vis(); check(!v.length, tag + ": после входа открыто " + v.join(", "));
+      if (mail === "old@k.ru") check((await names(p, "items")).includes("Дрель"), tag + ": вещи из облака не пришли");
+    }
+    // вход через Telegram на ПК, всплывающее окно заблокировано (как в артефакте): со страницы не уходим, ждём бота
+    for (const beta of [false, true]) {
+      const tag = (beta ? "бета" : "основной") + ", Telegram";
+      mock.tg.user = null;
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
+      await ctx.route(/supabase\.co/, mock.handle); await ctx.addInitScript(() => { window.open = () => null; });
+      const p = await ctx.newPage(); p.ctx = ctx; p.errs = []; p.on("pageerror", e => p.errs.push(e.message)); track(o, p);
+      const url0 = BASE + (beta ? "beta/" : ""); await p.goto(url0); await sleep(1500);
+      await p.click('#acc-bg button[data-p="telegram"]'); await sleep(800);
+      check(p.url() === url0, tag + ": ушли со страницы на " + p.url());
+      check(await p.isVisible("#acc-wait") && /t\.me\/mykolchanbot\?start=login_/.test(await p.getAttribute("#acc-wait-open", "href")), tag + ": нет окна ожидания с кнопкой «Открыть Telegram»");
+      mock.tg.user = "e1"; await sleep(4500);
+      const v = await p.evaluate(() => ["wel-bg", "ob-bg", "inst-bg", "inst-bar", "acc-bg"].filter(id => { const e = document.getElementById(id); return e && !e.hidden; }));
+      check(!v.length, tag + ": после входа открыто " + v.join(", "));
+      check((await names(p, "items")).includes("Дрель"), tag + ": вещи из облака не пришли");
+    }
+    mock.tg.user = null;
+    // без аккаунта («Использовать локально») приветствие остаётся
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
+    await ctx.route(/supabase\.co/, mock.handle);
+    const p = await ctx.newPage(); p.ctx = ctx; p.errs = []; p.on("pageerror", e => p.errs.push(e.message)); track(o, p);
+    await p.goto(BASE); await sleep(1500); await p.click("#acc-local-go"); await sleep(1200);
+    check(await p.isVisible("#welcome"), "основной без аккаунта: после «Использовать локально» нет приветствия");
+  });
+
   await scenario("Мастер с аккаунтом: новый — видит, с вещами в облаке — не видит", async (o) => {
     mock = createMock(); mock.addUser("n1", "new@k.ru", "pw1234", "Новый"); mock.addUser("e1", "old@k.ru", "pw1234", "Старый");
     mock.db.records.push({ user_id: "e1", coll: "items", id: "x1", data: { id: "x1", name: "Дрель", place: "Дом", parts: ["дом"], log: [] }, deleted: false });
@@ -299,6 +343,19 @@ const track = (opened, p) => { opened.push(p); return p; };
     const trip = (await all(A, "quivers")).find(q => q.kind === "trip");
     check(trip && (trip.exp || []).length === 2, "у Алексея не 2 траты: " + JSON.stringify(trip && trip.exp));
     check((await names(A, "items")).includes("Палатка"), "палатка не дошла до Алексея");
+    // общее: переименовать (Митяй) и удалить (Алексей) — у второго тоже меняется
+    await B.locator("#common-list .item .body").filter({ hasText: "Палатка" }).click(); await sleep(300);
+    check(await B.isVisible("#cm-bg"), "по нажатию на общее не открылось окно");
+    await B.fill("#cm-name", "палатка трёхместная"); await B.click("#cm-save"); await sleep(300);
+    await sync(B); await sync(A);
+    check((await names(A, "items")).includes("Палатка трёхместная") && !(await names(A, "items")).includes("Палатка"), "переименование общего не дошло до Алексея: " + (await names(A, "items")));
+    await A.locator("#common-list .item .body").filter({ hasText: "Палатка трёхместная" }).click(); await sleep(300);
+    await A.click("#cm-del"); check(/Удалить «Палатка трёхместная» из общего/.test(await A.textContent("#cm-del-text")), "нет подтверждения удаления общего");
+    await A.click("#cm-del-yes"); await sleep(300);
+    check(await A.evaluate(() => document.getElementById("cm-bg").hidden), "окно не закрылось после удаления");
+    await sync(A); await sync(B);
+    check(!(await names(B, "items")).some(n => /Палатка/.test(n)), "удалённое общее осталось у Митяя");
+    await B.fill(".common-add input", "палатка"); await B.click(".common-add button[type=submit]"); await sleep(300); await sync(B); await sync(A);
     // балансы одинаковые у обоих
     const bal = async (p) => { await p.click("#ex-open"); await sleep(300); const t = await p.evaluate(() => document.getElementById("ex").innerText); await p.click("#ex .sh-x"); return (t.match(/-?\d[\d\s]*₽/g) || []).join(","); };
     check(await bal(A) === await bal(B), "балансы у Алексея и Митяя разные");

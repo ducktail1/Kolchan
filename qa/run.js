@@ -373,6 +373,33 @@ const track = (opened, p) => { opened.push(p); return p; };
     check(ok === false, "старая ссылка всё ещё пускает");
   });
 
+  await scenario("Поездка: «Выложить из поездки» убирает копию из сумки, вещь в колчане остаётся", async (o) => {
+    mock = createMock(); mock.addUser("uA", "a@a.ru", "pass12", "Алексей");
+    const A = track(o, await phone({ uid: "uA" })); await closeSheets(A);
+    await A.evaluate(async () => {
+      const K = window.__kolchan, t = Date.now();
+      await K.put("places", { id: "pl1", name: "Дом", order: 0 });
+      await K.put("bags", { id: "bc", name: "Чехол", location: "Дом", dest: null, order: 0, log: [] });
+      for (const [id, name] of [["ik", "Кофта"], ["im", "Маска"]]) await K.put("items", { id, name, place: "", parts: [], in: "bc", qty: "", note: "", photo: "ph-" + id, missing: false, updatedAt: t, log: [] });
+    });
+    await A.reload(); await sleep(2500); await closeSheets(A);
+    await A.click("#qv-open"); await sleep(300); await A.click("#tp-add"); await A.fill("#tp-name", "Геш"); await A.click("#tp-form button[type=submit]"); await sleep(700);
+    await A.click("#add"); await sleep(400);
+    await A.locator("#tc-list > *", { hasText: "Чехол" }).first().click(); await A.click("#tc-go"); await sleep(800);
+    await A.locator("#who-list .item", { hasText: "Чехол" }).first().click(); await sleep(500);
+    await A.locator("#list button.item", { hasText: "Кофта" }).click(); await sleep(400);
+    check((await A.textContent("#f-del")) === "Выложить из поездки", "в поездке кнопка не «Выложить из поездки»: " + await A.textContent("#f-del"));
+    await A.click("#f-del"); await sleep(200);
+    check(/Выложить «Кофта» из «Чехол»\?/.test(await A.textContent("#f-confirm-text")), "нет подтверждения: " + await A.textContent("#f-confirm-text"));
+    const delAssets = []; A.on("request", r => { if (r.method() === "DELETE" && /storage/.test(r.url())) delAssets.push(r.url()); });
+    await A.click("#f-confirm-yes"); await sleep(600);
+    const its = await all(A, "items");
+    check(!its.some(x => x.name === "Кофта" && x.src), "копия кофты осталась в поездке");
+    check(its.some(x => x.name === "Маска" && x.src), "вместе с кофтой пропала маска");
+    check(its.some(x => x.id === "ik" && x.in === "bc"), "кофта пропала из чехла в колчане");
+    check(!delAssets.length, "удалили фото, общее с вещью в колчане");
+  });
+
   // ---------- 6. «Выйти» и вход снова: поездка не удаляется у всех (баг 10.11) ----------
   await scenario("«Выйти» и вход снова: поездка остаётся у всех", async (o) => {
     mock = createMock(); mock.addUser("uA", "a@a.ru", "pass12", "Алексей");

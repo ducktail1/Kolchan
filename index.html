@@ -758,7 +758,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <button type="button" class="link" id="f-qmove" hidden>Перенести в другой колчан…</button>
     <div class="err" id="f-err" hidden></div>
     <div class="confirm" id="f-confirm" hidden>
-      <span>Удалить эту вещь из базы? Это нельзя отменить.</span>
+      <span id="f-confirm-text">Удалить эту вещь из базы? Это нельзя отменить.</span>
       <div class="row2"><button type="button" id="f-confirm-no">Оставить</button><button type="button" class="danger" id="f-confirm-yes">Удалить</button></div>
     </div>
     <div class="actions">
@@ -776,7 +776,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <h2>Данные</h2>
     <div class="note" id="d-stat"></div>
     <div class="note" id="d-last"></div>
-    <div class="note">Версия Колчана: <b>1.7.7</b></div>
+    <div class="note">Версия Колчана: <b>1.7.8</b></div>
     <div class="dataBtns">
       <button type="button" class="primary" id="d-export">Выгрузить файл</button>
       <label>Загрузить файл <span class="hint">заменит всю базу на этом телефоне</span>
@@ -804,7 +804,7 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     <div class="actions"><div class="right"><button type="button" id="d-close">Закрыть</button></div></div>
   </div>
 </div>
-<script>window.__KOLCHAN_VERSION = "1.7.7";</script>
+<script>window.__KOLCHAN_VERSION = "1.7.8";</script>
 <script>window.__KOLCHAN_AVA = true;</script>
 <script src="local.js"></script>
 <script src="friends.js"></script>
@@ -2610,6 +2610,12 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
     $("f-qty").value = it ? (it.qty || "") : "";
     $("f-note").value = it ? (it.note || "") : "";
     $("f-del").hidden = !it; $("f-confirm").hidden = true; $("f-err").hidden = true;
+    // в поездке вещь в сумке — это запись поездки (обычно копия): «выложить», база не трогается
+    const tripOut = !!(it && curTrip() && it.in), bgo = tripOut ? bags.find(b => b.id === it.in) : null;
+    $("f-del").textContent = tripOut ? "Выложить из поездки" : "Удалить";
+    $("f-confirm-yes").textContent = tripOut ? "Выложить" : "Удалить";
+    $("f-confirm-text").textContent = tripOut ? "Выложить «" + it.name + "»" + (bgo ? " из «" + bgo.name + "»" : "") + "?" + (it.src ? " В твоём колчане она останется на своём месте." : "")
+      : "Удалить эту вещь из базы? Это нельзя отменить.";
     $("f-qmove").hidden = !it || qList().length < 2;
     $("f-found-wrap").hidden = !(it && it.missing);
     photoState = { id: it && it.photo || null, file: null, cleared: false };
@@ -2659,7 +2665,8 @@ label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
   $("f-confirm-yes").onclick = async () => {
     if (!editing) return;
     const it = editing;
-    try { await db.collection("items").doc(it.id).delete(); if (it.photo && assets) assets.delete(it.photo).catch(() => {}); closeSheet(); }
+    // фото копии в поездке — то же, что у вещи в колчане: его не удаляем
+    try { await db.collection("items").doc(it.id).delete(); if (it.photo && assets && !it.src) assets.delete(it.photo).catch(() => {}); closeSheet(); }
     catch (e) { err("Не получилось удалить. Попробуй ещё раз."); }
   };
   $("form").addEventListener("submit", async (e) => {
